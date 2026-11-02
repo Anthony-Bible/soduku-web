@@ -1,13 +1,36 @@
 import type { AchievementId, SolveSummary } from './achievements'
 import { recordAchievements, type AchievementProgress } from './achievements'
 import type { CalendarDay } from './calendarDay'
-import { recordOpen, recordSolve, solveFor, currentStreak, type DailyLog } from './dailyLog'
+import { catchUpAchievements } from './catchUp'
+import { currentStreak, solveFor, type DailyLog } from './dailyLog'
 import * as G from './gameState'
 import type { GameState } from './gameState'
 import type { Puzzle } from './generator'
 import type { Position } from './position'
+import { randomId } from './id'
 import type { SaveStore } from './saveStore'
-import { emptyStatistics, recordStart, recordWin, type Statistics } from './statistics'
+import type { Statistics } from './statistics'
+import {
+  addGame,
+  dailySlotKey,
+  deriveDailyLog,
+  deriveStatistics,
+  emptySyncDoc,
+  GAME_SLOT_KEY,
+  liveGameSlot,
+  liveSlot,
+  mergeDocs,
+  normalizeDoc,
+  clampDoc,
+  MAX_CLOCK_SKEW_MS,
+  openDay,
+  setSlot,
+  solveDay,
+  unlockAchievements,
+  winGame,
+  wonGameCount,
+  type SyncDoc,
+} from './syncDoc'
 
 /** What a solve earned, for the win screen. */
 export interface SolveResult {
@@ -35,29 +58,40 @@ export const IGNORED: MoveFeedback = { outcome: 'ignored', haptics: [], mistakeA
 /** Seconds between saves while the clock runs. */
 export const AUTOSAVE_INTERVAL = 5
 
+/** What a solve reports to the profile: the Achievements summary plus which Game it was. */
+export interface SolveReport extends SolveSummary {
+  readonly gameId?: string
+  readonly startedAt?: number
+}
+
 /**
- * The player's saved games, Statistics, Daily log and Achievements, and the rules for changing them.
- * Use it from one thread. Puzzle generation is slow, so the caller generates and passes the Puzzle in.
+ * The player's saved Games, Statistics, Daily log and Achievements, and the rules for changing them. All of
+ * it lives in one synced document (see syncDoc.ts); Statistics, the Daily log and the solve count are
+ * derived from it. Use it from one thread. Puzzle generation is slow, so the caller generates and passes the
+ * Puzzle in.
  */
 export class PlayerProfile {
-  statistics: Statistics
-  dailyLog: DailyLog
-  achievements: AchievementProgress
+  private doc: SyncDoc
+  private derived: { doc: SyncDoc; statistics: Statistics; dailyLog: DailyLog; achievements: AchievementProgress } | null = null
+  /** Called after a Game is won, so the app can sync soon. */
+  onSolve: (() => void) | null = null
 
   constructor(
     readonly store: SaveStore,
     readonly now: () => number = Date.now,
+    readonly newId: () => string = randomId,
   ) {
-    this.statistics = store.loadStatistics()
-    this.dailyLog = store.loadDailyLog()
-    this.achievements = store.loadAchievements()
+    this.doc = store.loadDoc()
   }
 
-  /** Re-reads persisted data so a write never clobbers changes another tab or app instance made. */
+  /** The current document, re-read so a write never clobbers changes another tab or app instance made. */
+  syncDoc(): SyncDoc {
+    this.reload()
+    return this.doc
+  }
+
   private reload(): void {
-    this.statistics = this.store.loadStatistics()
-    this.dailyLog = this.store.loadDailyLog()
-    this.achievements = this.store.loadAchievements()
+    this.doc = this.store.loadDoc()
   }
 
   /** Public refresh for storage events from other tabs. */
@@ -65,32 +99,96 @@ export class PlayerProfile {
     this.reload()
   }
 
+  private clockLimit(): number {
+    return this.now() + MAX_CLOCK_SKEW_MS
+  }
+
+  private update(fn: (doc: SyncDoc) => SyncDoc): void {
+    this.reload()
+    // Timestamps from a device whose date was set ahead are pulled back, so pruning can't drop current Games.
+    this.doc = normalizeDoc(fn(clampDoc(this.doc, this.clockLimit())))
+    this.store.saveDoc(this.doc)
+  }
+
+  /** Merges a document from the server into this device's. Never loses a local change. */
+  mergeRemote(remote: SyncDoc): void {
+    this.update((doc) => catchUpAchievements(mergeDocs(doc, clampDoc(remote, this.clockLimit())), this.now()))
+  }
+
+  /** Replaces everything with an empty, Signed Out state. */
+  clearAll(): void {
+    this.store.clearAll()
+    this.doc = emptySyncDoc()
+  }
+
+  private get view() {
+    if (this.derived?.doc !== this.doc) {
+      this.derived = {
+        doc: this.doc,
+        statistics: deriveStatistics(this.doc),
+        dailyLog: deriveDailyLog(this.doc),
+        achievements: { solveCount: wonGameCount(this.doc), unlockedAt: this.doc.unlockedAt },
+      }
+    }
+    return this.derived
+  }
+
+  /** Counted from Game records. */
+  get statistics(): Statistics {
+    return this.view.statistics
+  }
+  get dailyLog(): DailyLog {
+    return this.view.dailyLog
+  }
+  get achievements(): AchievementProgress {
+    return this.view.achievements
+  }
+
+  /** Writes a Game-in-progress slot (or its cleared marker). */
+  writeSlot(key: string, game: GameState | null, updatedAt: number): void {
+    this.update((doc) => setSlot(doc, key, game, updatedAt))
+  }
+
+  private startRecord(state: GameState, dailyDay: CalendarDay | null): void {
+    this.update((doc) =>
+      addGame(doc, {
+        id: state.id,
+        difficulty: state.difficulty,
+        startedAt: state.startedAt,
+        dailyDay,
+        wonSeconds: null,
+        mistakes: null,
+        hintsUsed: null,
+      }),
+    )
+  }
+
   // Ordinary games
 
-  /** The ordinary Game that can be continued, if any. A finished save is deleted. */
+  /** The ordinary Game that can be continued, if any. A finished save is cleared. */
   savedGame(): GameState | null {
-    const saved = this.store.loadGame()
-    if (saved && saved.status === 'won') {
-      this.store.clearGame()
+    this.reload()
+    const slot = liveGameSlot(this.doc)
+    if (slot && slot.game.status === 'won') {
+      this.writeSlot(GAME_SLOT_KEY, null, this.now())
       return null
     }
-    return saved
+    return slot ? slot.game : null
   }
 
   continueGame(): GameSession | null {
     const saved = this.savedGame()
     if (!saved) return null
-    const session = new GameSession(saved, null, this)
+    const session = new GameSession(saved, null, this, liveGameSlot(this.doc)!.updatedAt)
     session.resume()
     return session
   }
 
   /** Starts a new ordinary Game, replacing any saved one, and counts it as played. */
   startGame(puzzle: Puzzle): GameSession {
-    this.reload()
-    const session = new GameSession(G.newGame(puzzle, this.now()), null, this)
-    this.statistics = recordStart(this.statistics, puzzle.difficulty)
-    this.store.saveStatistics(this.statistics)
+    const state = G.newGame(puzzle, this.now(), this.newId())
+    const session = new GameSession(state, null, this, this.now())
+    this.startRecord(state, null)
     session.save()
     return session
   }
@@ -105,53 +203,62 @@ export class PlayerProfile {
   openDaily(day: CalendarDay, today: CalendarDay): { resumed: GameSession } | 'needsPuzzle' | null {
     this.reload()
     if (day > today || solveFor(this.dailyLog, day) !== undefined) return null
-    this.dailyLog = recordOpen(this.dailyLog, day, today)
-    this.store.saveDailyLog(this.dailyLog)
-    const saved = this.store.loadDaily(day)
-    if (!saved) return 'needsPuzzle'
-    const session = new GameSession(saved, day, this)
+    this.update((doc) => openDay(doc, day, today))
+    const slot = liveSlot(this.doc, dailySlotKey(day))
+    if (!slot) return 'needsPuzzle'
+    const session = new GameSession(slot.game, day, this, slot.updatedAt)
     session.resume()
     return { resumed: session }
   }
 
   /** Starts a day's Daily Puzzle after `openDaily` returned `needsPuzzle`, and counts it as played. */
   startDaily(puzzle: Puzzle, day: CalendarDay): GameSession {
-    this.reload()
-    const session = new GameSession(G.newGame(puzzle, this.now()), day, this)
-    this.statistics = recordStart(this.statistics, puzzle.difficulty)
-    this.store.saveStatistics(this.statistics)
+    const state = G.newGame(puzzle, this.now(), this.newId())
+    const session = new GameSession(state, day, this, this.now())
+    this.startRecord(state, day)
     session.save()
     return session
   }
 
   hasDailyInProgress(day: CalendarDay): boolean {
-    return solveFor(this.dailyLog, day) === undefined && this.store.loadDaily(day) !== null
+    this.reload()
+    return solveFor(this.dailyLog, day) === undefined && liveSlot(this.doc, dailySlotKey(day)) !== null
   }
 
   currentStreak(today: CalendarDay): number {
     return currentStreak(this.dailyLog, today)
   }
 
-  /** Clears Statistics only. Streaks, the Calendar and Achievements are kept. */
-  resetStatistics(): void {
-    this.statistics = emptyStatistics()
-    this.store.clearStatistics()
-  }
-
-  /** Records a solved Game in Statistics, the Daily log (for a Daily Puzzle) and Achievements. */
-  recordSolve(summary: SolveSummary): SolveResult {
+  /** Records a solved Game in its Game record, the Daily log (for a Daily Puzzle) and Achievements. */
+  recordSolve(summary: SolveReport): SolveResult {
     this.reload()
-    const { stats, isBest } = recordWin(this.statistics, summary.difficulty, summary.seconds)
-    this.statistics = stats
-    this.store.saveStatistics(stats)
-    if (summary.dailyDay !== null) {
-      this.dailyLog = recordSolve(this.dailyLog, summary.dailyDay)
-      this.store.saveDailyLog(this.dailyLog)
-    }
-    const { progress, unlocked } = recordAchievements(this.achievements, summary, this.dailyLog, this.now())
-    this.achievements = progress
-    this.store.saveAchievements(progress)
-    return { isNewBest: isBest, unlocked }
+    const id = summary.gameId ?? this.newId()
+    const bestBefore = this.statistics[summary.difficulty].bestTimeSeconds
+    const solveCountBefore = wonGameCount(this.doc, id)
+    let unlocked: AchievementId[] = []
+    this.update((doc) => {
+      let next = winGame(doc, {
+        id,
+        difficulty: summary.difficulty,
+        startedAt: summary.startedAt ?? this.now(),
+        dailyDay: summary.dailyDay,
+        seconds: summary.seconds,
+        mistakes: summary.mistakes,
+        hintsUsed: summary.hintsUsed,
+      })
+      if (summary.dailyDay !== null) next = solveDay(next, summary.dailyDay)
+      const result = recordAchievements(
+        { solveCount: solveCountBefore, unlockedAt: next.unlockedAt },
+        summary,
+        deriveDailyLog(next),
+        this.now(),
+      )
+      unlocked = result.unlocked
+      return unlockAchievements(next, unlocked, this.now())
+    })
+    const isNewBest = bestBefore === null || summary.seconds < bestBefore
+    this.onSolve?.()
+    return { isNewBest, unlocked }
   }
 }
 
@@ -172,8 +279,14 @@ export class GameSession {
     /** Set when this Game is a Daily Puzzle; it then saves to that day's slot. */
     readonly dailyDay: CalendarDay | null,
     private readonly profile: PlayerProfile,
+    /** Time of the last move or change; it decides which device's copy of this Game wins a sync. */
+    private updatedAt: number = profile.now(),
   ) {
     this.state = state
+  }
+
+  private touch(): void {
+    this.updatedAt = this.profile.now()
   }
 
   get isClockRunning(): boolean {
@@ -232,6 +345,7 @@ export class GameSession {
 
   toggleNotesMode(): MoveFeedback {
     this.commit(G.toggleNotesMode(this.state))
+    this.touch()
     this.save()
     return { ...IGNORED, outcome: 'applied', haptics: ['light'] }
   }
@@ -256,20 +370,16 @@ export class GameSession {
     if (this.tickCount % AUTOSAVE_INTERVAL === 0) this.save()
   }
 
-  /** Writes the Game to its save slot, or deletes the slot once the Game is won. */
+  /** Writes the Game to its save slot, or leaves a cleared marker once the Game is won. */
   save(): void {
-    const store = this.profile.store
-    const day = this.dailyDay
-    if (this.state.status === 'won') {
-      if (day === null) store.clearGame()
-      else store.clearDaily(day)
-    } else if (day === null) store.saveGame(this.state)
-    else store.saveDaily(this.state, day)
+    const key = this.dailyDay === null ? GAME_SLOT_KEY : dailySlotKey(this.dailyDay)
+    this.profile.writeSlot(key, this.state.status === 'won' ? null : this.state, this.updatedAt)
   }
 
   private finish(outcome: G.Outcome, at: Position | null, first: Haptic, completed: ReadonlySet<Position>): MoveFeedback {
     // `this.state` was already assigned by the caller; publish it to listeners.
     this.version++
+    if (outcome !== 'ignored') this.touch()
     if (outcome === 'ignored') {
       this.listeners.forEach((fn) => fn())
       return IGNORED
@@ -295,6 +405,8 @@ export class GameSession {
     if (this.solveResult) return this.solveResult
     const s = this.state
     this.solveResult = this.profile.recordSolve({
+      gameId: s.id,
+      startedAt: s.startedAt,
       difficulty: s.difficulty,
       seconds: s.elapsedSeconds,
       mistakes: s.mistakes,

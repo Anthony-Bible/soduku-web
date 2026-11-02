@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { DIFFICULTIES, currentStreak, displayName, longestStreak, solvedCount, totalPlayed, totalWon, winRatePercent } from '../core'
 import { useApp } from '../app/AppContext'
-import { ConfirmDialog } from './ConfirmDialog'
 import { Sheet } from './Sheet'
 import { formatElapsed } from './format'
 
@@ -17,7 +15,6 @@ function Row({ label, value }: { label: string; value: string | number }) {
 export function StatsSheet() {
   const { controller, today } = useApp()
   const { statistics, dailyLog } = controller.profile
-  const [confirming, setConfirming] = useState(false)
   return (
     <Sheet title="Statistics" onClose={() => controller.openSheet(null)}>
       <section aria-label="Daily">
@@ -43,21 +40,6 @@ export function StatsSheet() {
           </section>
         )
       })}
-      <button type="button" className="btn btn-danger-text" onClick={() => setConfirming(true)}>
-        Reset Statistics
-      </button>
-      {confirming && (
-        <ConfirmDialog
-          title="Reset all statistics?"
-          message="Streaks, the Calendar and Achievements are kept."
-          confirmLabel="Reset"
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => {
-            controller.resetStatistics()
-            setConfirming(false)
-          }}
-        />
-      )}
     </Sheet>
   )
 }

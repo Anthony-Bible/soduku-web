@@ -1,9 +1,11 @@
-import { isAchievementId, emptyAchievementProgress, type AchievementProgress } from './achievements'
-import type { CalendarDay } from './calendarDay'
+import { isAchievementId, type AchievementProgress } from './achievements'
 import { emptyDailyLog, type DailyLog } from './dailyLog'
-import { DIFFICULTIES, isDifficulty } from './difficulty'
-import type { GameState } from './gameState'
-import { emptyStatistics, type Statistics } from './statistics'
+import { DIFFICULTIES } from './difficulty'
+import { randomId } from './id'
+import { migrateLegacy, type LegacyData } from './migration'
+import type { Statistics } from './statistics'
+import { emptySyncDoc, parseSyncDoc, type SyncDoc } from './syncDoc'
+import { isInt, isLegacyGameState, isNonNegInt, isObj } from './validate'
 
 /** The minimal string key/value surface the core needs. Implementations must never throw. */
 export interface KeyValueStore {
@@ -27,68 +29,12 @@ export class MemoryStore implements KeyValueStore {
 }
 
 /** Bump a record's version (and migrate) rather than changing its shape in place. */
-export const SAVE_VERSION = 1
-const PREFIX = 'sudoku.v1.'
+export const SAVE_VERSION = 2
+const PREFIX = 'sudoku.v2.'
+const LEGACY_PREFIX = 'sudoku.v1.'
+const LEGACY_VERSION = 1
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v)
-const isNonNegInt = (v: unknown): v is number => isInt(v) && v >= 0
-
-function isBoard(v: unknown): boolean {
-  return (
-    Array.isArray(v) &&
-    v.length === 81 &&
-    v.every(
-      (c) =>
-        isObj(c) &&
-        isInt(c.value) && c.value >= 0 && c.value <= 9 &&
-        typeof c.given === 'boolean' &&
-        isInt(c.notes) && c.notes >= 0 && c.notes < 512,
-    )
-  )
-}
-
-function isMove(m: unknown): boolean {
-  if (!isObj(m) || !isInt(m.position) || m.position < 0 || m.position > 80 || !isObj(m.move)) return false
-  const k = m.move
-  switch (k.kind) {
-    case 'setValue':
-      return (
-        isInt(k.previous) &&
-        isInt(k.next) &&
-        isInt(k.previousNotes) &&
-        (k.clearedPeers === undefined ||
-          (Array.isArray(k.clearedPeers) && k.clearedPeers.every((q) => isInt(q) && q >= 0 && q <= 80)))
-      )
-    case 'toggleNote':
-      return isInt(k.number)
-    case 'clearNotes':
-      return isInt(k.previousNotes)
-    default:
-      return false
-  }
-}
-
-function isGameState(v: unknown): v is GameState {
-  return (
-    isObj(v) &&
-    isBoard(v.board) &&
-    isBoard(v.solution) &&
-    isDifficulty(v.difficulty) &&
-    typeof v.seed === 'string' &&
-    isNonNegInt(v.mistakes) &&
-    isNonNegInt(v.hintsUsed) &&
-    isNonNegInt(v.elapsedSeconds) &&
-    (v.status === 'playing' || v.status === 'paused' || v.status === 'won') &&
-    Array.isArray(v.history) &&
-    v.history.every(isMove) &&
-    (v.selected === null || (isInt(v.selected) && v.selected >= 0 && v.selected <= 80)) &&
-    typeof v.isNotesMode === 'boolean' &&
-    typeof v.startedAt === 'number'
-  )
-}
-
-function isStatistics(v: unknown): v is Statistics {
+function isLegacyStatistics(v: unknown): v is Statistics {
   return (
     isObj(v) &&
     DIFFICULTIES.every((d) => {
@@ -98,7 +44,7 @@ function isStatistics(v: unknown): v is Statistics {
   )
 }
 
-function isDailyLog(v: unknown): v is DailyLog {
+function isLegacyDailyLog(v: unknown): v is DailyLog {
   return (
     isObj(v) &&
     isObj(v.firstOpened) &&
@@ -108,7 +54,7 @@ function isDailyLog(v: unknown): v is DailyLog {
   )
 }
 
-function isAchievements(v: unknown): v is AchievementProgress {
+function isLegacyAchievements(v: unknown): v is AchievementProgress {
   return (
     isObj(v) &&
     isNonNegInt(v.solveCount) &&
@@ -117,59 +63,193 @@ function isAchievements(v: unknown): v is AchievementProgress {
   )
 }
 
+/** The account this device is signed in to, as last confirmed by the server. */
+export interface StoredAccount {
+  readonly email: string
+}
+
 /**
- * Keeps every record as versioned JSON in a key/value store. Saving is best-effort: a failed write is
- * ignored and an unreadable or malformed record loads as if missing, so a bad save never stops play.
+ * Keeps the synced document (everything the player has done) as versioned JSON in a key/value store, plus
+ * which Account the device is signed in to. Saving is best-effort: a failed write is ignored and an
+ * unreadable or malformed record loads as if missing, so a bad save never stops play. The first load
+ * migrates local storage v1 into the document.
  */
 export class SaveStore {
-  constructor(private readonly kv: KeyValueStore) {}
+  private cache: SyncDoc | null = null
+  /** The stored text `cache` was parsed from, so an unchanged record is not parsed (or re-derived) again. */
+  private cacheRaw: string | null = null
+  /** True when the last attempt to store the document failed, so `cache` is the only copy. */
+  private unpersisted = false
 
-  private read<T>(key: string, guard: (v: unknown) => v is T): T | null {
+  constructor(
+    private readonly kv: KeyValueStore,
+    private readonly newId: () => string = randomId,
+  ) {}
+
+  private unwrap(raw: string, version: number = SAVE_VERSION): unknown {
     try {
-      const raw = this.kv.getItem(PREFIX + key)
-      if (raw === null) return null
       const parsed: unknown = JSON.parse(raw)
-      if (!isObj(parsed) || parsed.v !== SAVE_VERSION) return null
-      return guard(parsed.data) ? parsed.data : null
+      if (!isObj(parsed) || parsed.v !== version) return null
+      return parsed.data ?? null
     } catch {
       return null
     }
   }
 
-  private write(key: string, data: unknown): void {
+  private read(key: string, prefix: string, version: number): unknown {
     try {
-      this.kv.setItem(PREFIX + key, JSON.stringify({ v: SAVE_VERSION, data }))
+      const raw = this.kv.getItem(prefix + key)
+      return raw === null ? null : this.unwrap(raw, version)
+    } catch {
+      return null
+    }
+  }
+
+  private lastWriteOk = true
+
+  /** Returns the text it tried to store. */
+  private write(key: string, data: unknown): string {
+    const text = JSON.stringify({ v: SAVE_VERSION, data })
+    try {
+      this.kv.setItem(PREFIX + key, text)
+      this.lastWriteOk = true
+    } catch {
+      this.lastWriteOk = false // Best effort.
+    }
+    return text
+  }
+
+  private remove(key: string, prefix: string = PREFIX): void {
+    try {
+      this.kv.removeItem(prefix + key)
     } catch {
       // Best effort.
     }
   }
 
-  private remove(key: string): void {
+  // The synced document
+
+  loadDoc(): SyncDoc {
+    let raw: string | null = null
+    let unreadable = false
     try {
-      this.kv.removeItem(PREFIX + key)
+      raw = this.kv.getItem(PREFIX + 'doc')
     } catch {
-      // Best effort.
+      unreadable = true
     }
+    if (raw !== null && raw === this.cacheRaw && this.cache) return this.cache
+    const stored = raw === null ? null : parseSyncDoc(this.unwrap(raw))
+    if (stored) {
+      this.cache = stored
+      this.cacheRaw = raw
+      return stored
+    }
+    // Keep what this page last wrote only when storage can't be read or the write never landed. A record that
+    // is simply gone was removed on purpose (another tab signed out), and must not be written back.
+    if (this.cache && (unreadable || raw !== null || this.unpersisted)) return this.cache
+    this.cache = null
+    this.cacheRaw = null
+    const migrated = this.migrate()
+    if (migrated) {
+      this.saveDoc(migrated)
+      // Only drop v1 once the document really landed; otherwise the migration runs again next load.
+      if (!this.unpersisted) this.removeLegacy(migrated)
+      return migrated
+    }
+    return emptySyncDoc()
   }
 
-  // Ordinary Game in progress
-  loadGame = (): GameState | null => this.read('game', isGameState)
-  saveGame = (s: GameState): void => this.write('game', s)
-  clearGame = (): void => this.remove('game')
+  saveDoc = (doc: SyncDoc): void => {
+    this.cache = doc
+    this.cacheRaw = this.write('doc', doc)
+    this.unpersisted = !this.lastWriteOk
+  }
 
-  // Daily Puzzles in progress, one per day
-  loadDaily = (day: CalendarDay): GameState | null => this.read(`daily.${day}`, isGameState)
-  saveDaily = (s: GameState, day: CalendarDay): void => this.write(`daily.${day}`, s)
-  clearDaily = (day: CalendarDay): void => this.remove(`daily.${day}`)
+  // Account and sync status
 
-  // Records
-  loadStatistics = (): Statistics => this.read('statistics', isStatistics) ?? emptyStatistics()
-  saveStatistics = (s: Statistics): void => this.write('statistics', s)
-  clearStatistics = (): void => this.remove('statistics')
+  loadAccount(): StoredAccount | null {
+    const v = this.read('account', PREFIX, SAVE_VERSION)
+    return isObj(v) && typeof v.email === 'string' ? { email: v.email } : null
+  }
+  saveAccount = (a: StoredAccount): void => {
+    this.write('account', a)
+  }
+  clearAccount = (): void => this.remove('account')
 
-  loadDailyLog = (): DailyLog => this.read('dailyLog', isDailyLog) ?? emptyDailyLog()
-  saveDailyLog = (l: DailyLog): void => this.write('dailyLog', l)
+  /**
+   * The Account the progress on this device belongs to. It outlives a lost session (the progress merges back
+   * into the same Account on the next sign-in) but not a sign-out.
+   */
+  loadOwner(): string | null {
+    const v = this.read('owner', PREFIX, SAVE_VERSION)
+    return typeof v === 'string' ? v : null
+  }
+  saveOwner = (email: string): void => {
+    this.write('owner', email)
+  }
 
-  loadAchievements = (): AchievementProgress => this.read('achievements', isAchievements) ?? emptyAchievementProgress()
-  saveAchievements = (p: AchievementProgress): void => this.write('achievements', p)
+  /** Set when the player signed out but the server could not be told; the session cookie may still be valid. */
+  loadPendingSignOut(): boolean {
+    return this.read('pendingSignOut', PREFIX, SAVE_VERSION) === true
+  }
+  savePendingSignOut = (): void => {
+    this.write('pendingSignOut', true)
+  }
+  clearPendingSignOut = (): void => this.remove('pendingSignOut')
+
+  loadLastSyncedAt(): number | null {
+    const v = this.read('lastSyncedAt', PREFIX, SAVE_VERSION)
+    return typeof v === 'number' ? v : null
+  }
+  saveLastSyncedAt = (t: number): void => {
+    this.write('lastSyncedAt', t)
+  }
+
+  /** Signed out: forget everything on this device except a pending sign-out. v1 data was already migrated away and stays gone. */
+  clearAll(): void {
+    this.cache = null
+    this.cacheRaw = null
+    this.unpersisted = false
+    this.remove('doc')
+    this.remove('account')
+    this.remove('owner')
+    this.remove('lastSyncedAt')
+    this.write('migrated', true)
+  }
+
+  // Migration from local storage v1
+
+  private readLegacy(): LegacyData | null {
+    const get = (key: string) => this.read(key, LEGACY_PREFIX, LEGACY_VERSION)
+    const statistics = get('statistics')
+    const dailyLog = get('dailyLog')
+    const achievements = get('achievements')
+    const game = get('game')
+    const data: LegacyData = {
+      statistics: isLegacyStatistics(statistics) ? statistics : null,
+      dailyLog: isLegacyDailyLog(dailyLog) ? dailyLog : null,
+      achievements: isLegacyAchievements(achievements) ? achievements : null,
+      game: isLegacyGameState(game) ? game : null,
+      dailies: {},
+    }
+    const dailies: Record<number, NonNullable<LegacyData['game']>> = {}
+    for (const day of Object.keys((data.dailyLog ?? emptyDailyLog()).firstOpened)) {
+      const g = get(`daily.${day}`)
+      if (isLegacyGameState(g)) dailies[Number(day)] = g
+    }
+    const found = data.statistics || data.dailyLog || data.achievements || data.game || Object.keys(dailies).length > 0
+    return found ? { ...data, dailies } : null
+  }
+
+  private migrate(): SyncDoc | null {
+    if (this.read('migrated', PREFIX, SAVE_VERSION) === true) return null
+    const legacy = this.readLegacy()
+    return legacy ? migrateLegacy(legacy, this.newId) : null
+  }
+
+  private removeLegacy(doc: SyncDoc): void {
+    for (const key of ['game', 'statistics', 'dailyLog', 'achievements']) this.remove(key, LEGACY_PREFIX)
+    for (const day of Object.keys(doc.firstOpened)) this.remove(`daily.${day}`, LEGACY_PREFIX)
+    this.write('migrated', true)
+  }
 }

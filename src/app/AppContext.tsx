@@ -12,8 +12,7 @@ export function AppProvider({ controller, children }: { controller?: AppControll
       if (document.visibilityState === 'visible') value.refreshToday()
     }
     const onStorage = () => {
-      value.profile.refresh()
-      value.changed()
+      value.storageChanged()
     }
     window.addEventListener('storage', onStorage)
     document.addEventListener('visibilitychange', onVisible)
@@ -28,7 +27,9 @@ export function AppProvider({ controller, children }: { controller?: AppControll
       }, Math.max(250, next.getTime() - now.getTime()))
     }
     arm()
+    const stopSyncing = value.startSyncing()
     return () => {
+      stopSyncing()
       clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)

@@ -5,6 +5,19 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { Icon } from './Icon'
 import { accessibleElapsed, formatElapsed } from './format'
 
+function AccountButton() {
+  const { controller, sync } = useApp()
+  if (!controller.sync.available) return null
+  const email = sync.account?.email
+  const label = email ? `Account, signed in as ${email}${sync.error ? ', last sync failed' : ''}` : 'Account, signed out'
+  return (
+    <button type="button" className="account-btn" aria-label={label} onClick={() => controller.openSheet('account')}>
+      {email ? <span aria-hidden="true">{email.charAt(0).toUpperCase()}</span> : <Icon name="person" size={20} />}
+      {email && sync.error && <span className="account-dot" aria-hidden="true" />}
+    </button>
+  )
+}
+
 function DailyCard() {
   const { controller, today } = useApp()
   const profile = controller.profile
@@ -20,10 +33,13 @@ function DailyCard() {
             {longTitle(today)} · {displayName(dailyDifficulty(today))}
           </p>
         </div>
+        <div className="daily-badges">
         <span className={`streak${streak > 0 ? ' active' : ''}`}>
           <Icon name="flame" fill={streak > 0} /> <span className="tabular" aria-hidden="true">{streak}</span>
           <span className="sr-only">{`Streak ${streak} ${streak === 1 ? 'day' : 'days'}`}</span>
         </span>
+        <AccountButton />
+        </div>
       </div>
       <div className="row-buttons">
         <button type="button" className="btn btn-primary grow" disabled={solved} onClick={() => controller.openToday()}>

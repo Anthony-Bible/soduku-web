@@ -9,14 +9,17 @@ import {
   type GameSession,
   type KeyValueStore,
 } from '../core'
+import type { Api } from '../platform/api'
+import { SyncManager, type SyncStatus } from './sync'
 
-export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar'
+export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account'
 
 export interface Snapshot {
   readonly version: number
   readonly session: GameSession | null
   readonly sheet: Sheet | null
   readonly today: CalendarDay
+  readonly sync: SyncStatus
 }
 
 /**
@@ -25,6 +28,7 @@ export interface Snapshot {
  */
 export class AppController {
   readonly profile: PlayerProfile
+  readonly sync: SyncManager
   private session: GameSession | null = null
   private sheet: Sheet | null = null
   private today: CalendarDay
@@ -35,14 +39,21 @@ export class AppController {
   constructor(
     kv: KeyValueStore,
     private readonly clock: () => Date = () => new Date(),
+    api: Api | null = null,
   ) {
-    this.profile = new PlayerProfile(new SaveStore(kv), () => this.clock().getTime())
+    const store = new SaveStore(kv)
+    this.profile = new PlayerProfile(store, () => this.clock().getTime())
+    this.sync = new SyncManager(this.profile, store, api, () => this.clock().getTime(), () => this.changed())
+    this.profile.onSolve = () => void this.sync.sync()
+    this.sync.onCleared = () => {
+      this.session = null
+    }
     this.today = dayFromDate(this.clock())
     this.snapshot = this.makeSnapshot()
   }
 
   private makeSnapshot(): Snapshot {
-    return { version: this.version, session: this.session, sheet: this.sheet, today: this.today }
+    return { version: this.version, session: this.session, sheet: this.sheet, today: this.today, sync: this.sync.getStatus() }
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -116,9 +127,59 @@ export class AppController {
     this.changed()
   }
 
-  resetStatistics(): void {
-    this.profile.resetStatistics()
+  /**
+   * Another tab changed local storage. Re-reads it; if that tab signed out or signed in to a different Account,
+   * the Game open here is closed without saving, so it can't write one Account's progress into another. Every
+   * move is already saved, so the player can resume it from Home when it still belongs to them.
+   */
+  storageChanged(): void {
+    const hadAccount = this.sync.getStatus().account !== null
+    this.profile.refresh()
+    const ownerChanged = this.sync.refresh()
+    const signedOutElsewhere =
+      hadAccount && this.sync.getStatus().account === null && Object.keys(this.profile.syncDoc().games).length === 0
+    if (ownerChanged || signedOutElsewhere) {
+      this.session = null
+      this.sheet = null
+      this.changed()
+    }
+  }
+
+  /** Signs out: the device goes back to an empty Signed Out state, and no Game stays open. */
+  async signOut(): Promise<void> {
+    await this.sync.signOut()
+    this.session = null
+    this.sheet = null
     this.changed()
+  }
+
+  /**
+   * Starts syncing: now, when the page is hidden, on a timer while it is visible, and (through the profile)
+   * after each finished Game. Returns a function that stops it.
+   */
+  startSyncing(): () => void {
+    if (!this.sync.available) return () => undefined
+    void this.sync.adoptExistingSession()
+    void this.sync.sync()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        void this.sync.sync({ keepalive: true })
+      } else {
+        void this.sync.sync()
+        void this.sync.adoptExistingSession()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void this.sync.retryPendingSignOut()
+        void this.sync.sync()
+      }
+    }, 60_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      clearInterval(timer)
+    }
   }
 
   private leaveGame(): void {

@@ -26,6 +26,8 @@ export interface Move {
 
 /** One Game in progress or finished. Plain JSON-safe data; every function below returns a new state. */
 export interface GameState {
+  /** Permanent random id assigned when the Game starts; its Game record in the synced document has the same id. */
+  readonly id: string
   readonly board: Board
   readonly solution: Board
   readonly difficulty: Difficulty
@@ -50,8 +52,9 @@ export interface Result {
   readonly outcome: Outcome
 }
 
-export function newGame(puzzle: Puzzle, startedAt: number): GameState {
+export function newGame(puzzle: Puzzle, startedAt: number, id: string = `game-${startedAt}`): GameState {
   return {
+    id,
     board: puzzle.puzzle,
     solution: puzzle.solution,
     difficulty: puzzle.difficulty,

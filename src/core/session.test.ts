@@ -73,19 +73,11 @@ describe('ordinary Games', () => {
     expect(solveAll(s).solve?.unlocked).not.toContain('flawless')
   })
 
-  test('resetStatistics keeps Streaks, Calendar and Achievements', () => {
-    const s = profile.startGame(generate('easy', 6n))
-    solveAll(s)
-    profile.resetStatistics()
-    expect(profile.statistics.easy.played).toBe(0)
-    expect(profile.achievements.unlockedAt.firstSolve).toBeDefined()
-  })
-
   test('state is persisted across profiles', () => {
     solveAll(profile.startGame(generate('easy', 7n)))
     const fresh = new PlayerProfile(new SaveStore(kv))
     expect(fresh.statistics.easy.won).toBe(1)
-    expect(fresh.achievements.solveCount).toBe(1)
+    expect(fresh.achievements.solveCount).toBe(1) // counted from Game records
   })
 })
 
@@ -96,6 +88,20 @@ describe('Daily Puzzles', () => {
     if (o === 'needsPuzzle') return profile.startDaily(dailyPuzzle(day), day)
     return o ? o.resumed : null
   }
+
+  test('a Catch-Up for a day more than 90 days back survives saving and reloading', () => {
+    open(today)
+    const old = today - 120
+    const s = open(old)!
+    s.pause()
+    s.save()
+    expect(profile.hasDailyInProgress(old)).toBe(true)
+    const reloaded = new PlayerProfile(new SaveStore(kv), () => 1_000)
+    expect(reloaded.hasDailyInProgress(old)).toBe(true)
+    const stats = reloaded.statistics
+    expect(reloaded.openDaily(old, today)).not.toBe('needsPuzzle')
+    expect(reloaded.statistics).toEqual(stats) // resuming is not another Game
+  })
 
   test('future days cannot be opened', () => {
     expect(profile.openDaily(today + 1, today)).toBeNull()
@@ -171,5 +177,19 @@ describe('two profiles sharing one store', () => {
     const fresh = new PlayerProfile(new SaveStore(kv))
     expect(solveFor(fresh.dailyLog, today)).toBe('onDay')
     expect(fresh.statistics.easy.won).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('a device whose date was set ahead', () => {
+  test('cannot make every device drop its Game in progress', () => {
+    const now = Date.UTC(2026, 10, 2)
+    const p = new PlayerProfile(new SaveStore(new MemoryStore()), () => now)
+    p.startGame(generate('easy', 1n))
+    // The Account's document carries a clock 100 days in the future.
+    p.mergeRemote({ ...p.syncDoc(), clock: now + 100 * 86_400_000 })
+    expect(p.savedGame()).not.toBeNull()
+    const s = p.startGame(generate('easy', 2n))
+    s.save()
+    expect(p.savedGame()?.id).toBe(s.state.id)
   })
 })

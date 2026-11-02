@@ -20,3 +20,15 @@ export function accessibleElapsed(seconds: number): string {
   if (s > 0 || parts.length === 0) parts.push(`${s} ${s === 1 ? 'second' : 'seconds'}`)
   return parts.join(' ')
 }
+
+/** "just now", "5 minutes ago", "2 hours ago", "3 days ago". */
+export function relativeTime(now: number, then: number): string {
+  const seconds = Math.max(0, Math.floor((now - then) / 1000))
+  if (seconds < 45) return 'just now'
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'} ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return unit(minutes, 'minute')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return unit(hours, 'hour')
+  return unit(Math.floor(hours / 24), 'day')
+}

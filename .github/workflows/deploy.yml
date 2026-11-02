@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22 # wrangler 4 needs Node 22+
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -31,12 +31,22 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-      # Pushes to main deploy to production. Pull requests from this repo get a preview URL.
-      # Forked PRs have no access to secrets, so they only run the checks above.
-      - name: Deploy to Cloudflare Pages
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+      # Pull requests only check that the Worker bundles. There are no preview deploys.
+      - name: Dry-run the Worker deploy
+        if: github.event_name == 'pull_request'
+        run: pnpm exec wrangler deploy --dry-run
+
+      # Pushes to main apply D1 migrations, then deploy the Worker with the built static assets.
+      - name: Apply D1 migrations
+        if: github.event_name == 'push'
         env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
           CLOUDFLARE_ACCOUNT_ID: e9d6dfba708b89e8bfa1d143ff7c549c
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx --yes wrangler@4.86.0 pages deploy dist --project-name sudoku-web --branch "$BRANCH" --commit-hash "$GITHUB_SHA"
+        run: pnpm exec wrangler d1 migrations apply sudoku --remote
+
+      - name: Deploy the Worker
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: e9d6dfba708b89e8bfa1d143ff7c549c
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm exec wrangler deploy
