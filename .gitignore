@@ -6,3 +6,5 @@ dev-dist
 coverage
 .dev.vars
 .wrangler
+playwright-report
+test-results

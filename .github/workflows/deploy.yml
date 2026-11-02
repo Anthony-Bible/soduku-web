@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  test-and-deploy:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,16 +36,74 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm exec wrangler deploy --dry-run
 
-      # Pushes to main apply D1 migrations, then deploy the Worker with the built static assets.
+  # Playwright against the built app on a local Worker and a fresh local D1 (e2e/serve.sh). Nothing remote.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # wrangler 4 needs Node 22+
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Chromium system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - run: pnpm exec playwright test
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: [test, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # wrangler 4 needs Node 22+
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Apply D1 migrations, then deploy the Worker with the built static assets.
       - name: Apply D1 migrations
-        if: github.event_name == 'push'
         env:
           CLOUDFLARE_ACCOUNT_ID: e9d6dfba708b89e8bfa1d143ff7c549c
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: pnpm exec wrangler d1 migrations apply sudoku --remote
 
       - name: Deploy the Worker
-        if: github.event_name == 'push'
         env:
           CLOUDFLARE_ACCOUNT_ID: e9d6dfba708b89e8bfa1d143ff7c549c
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
