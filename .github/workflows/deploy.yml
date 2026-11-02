@@ -37,5 +37,6 @@ jobs:
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          CLOUDFLARE_ACCOUNT_ID: e9d6dfba708b89e8bfa1d143ff7c549c
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@4.86.0 pages deploy dist --project-name sudoku-web --branch "$BRANCH" --commit-hash "$GITHUB_SHA"
