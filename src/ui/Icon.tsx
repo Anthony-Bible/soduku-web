@@ -15,6 +15,9 @@ const PATHS = {
   left: 'M15 5l-7 7 7 7',
   right: 'M9 5l7 7-7 7',
   person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  close: 'M6 6l12 12M18 6 6 18',
+  share: 'M12 3v12M8 7l4-4 4 4M6 11v9h12v-9',
 } as const
 
 export type IconName = keyof typeof PATHS

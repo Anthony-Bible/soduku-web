@@ -70,6 +70,10 @@ _Avoid_: OTP, PIN, verification code
 Playing with no Account, where progress lives only on this device; every feature except sync still works.
 _Avoid_: Guest, anonymous, offline mode
 
+**Installed App**:
+The app added to a device's home screen or dock and opened on its own rather than in a browser tab. On iPhone and iPad it keeps its progress apart from the browser's, so it starts **Signed Out** until the player signs in there.
+_Avoid_: PWA, home-screen app, standalone
+
 ### Rewards
 
 **Achievement**:

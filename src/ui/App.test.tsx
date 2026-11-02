@@ -72,6 +72,36 @@ describe('win screen', () => {
   })
 })
 
+describe('sharing a win', () => {
+  it('copies the result where there is no share sheet', async () => {
+    const user = userEvent.setup()
+    const copied: string[] = []
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (t: string) => void copied.push(t) },
+    })
+    try {
+      const controller = setup()
+      await user.click(screen.getByRole('button', { name: 'New Game' }))
+      await user.click(screen.getByRole('button', { name: /Easy/ }))
+      const session = controller.getSnapshot().session!
+      for (let p = 0; p < 81; p++) {
+        if (!session.state.board[p].given) {
+          session.select(p)
+          session.tapNumber(session.state.solution[p].value)
+        }
+      }
+      controller.changed()
+      await user.click(await screen.findByRole('button', { name: 'Share' }))
+      expect(copied).toHaveLength(1)
+      expect(copied[0]).toMatch(/^Sudoku · Easy\n⏱ \d+:\d\d · 0 mistakes\n/)
+      expect(await screen.findByText('Copied to the clipboard.')).toBeTruthy()
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  })
+})
+
 describe('midnight', () => {
   it('opening the Daily Puzzle after midnight uses the real date, so yesterday is a Catch-Up', () => {
     let now = new Date(2026, 10, 1, 23, 50)
