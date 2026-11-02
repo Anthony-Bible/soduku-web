@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useBackNavigation } from '../app/useBackNavigation'
 import { useApp } from '../app/AppContext'
+import { AccountSheet } from './AccountSheet'
 import { AchievementsSheet } from './Achievements'
 import { CalendarSheet } from './CalendarSheet'
 import { DifficultyPicker } from './DifficultyPicker'
@@ -20,6 +21,7 @@ export function App() {
       {sheet === 'stats' && <StatsSheet />}
       {sheet === 'achievements' && <AchievementsSheet />}
       {sheet === 'calendar' && <CalendarSheet />}
+      {sheet === 'account' && <AccountSheet />}
     </>
   )
 }

@@ -30,16 +30,22 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
         navigateFallback: 'index.html',
+        // The API and sign-in pages are the Worker's, never the app shell, and are never cached.
+        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
       },
     }),
   ],
+  server: {
+    // `pnpm dev` talks to `pnpm dev:worker` (wrangler dev) for /api and /auth.
+    proxy: { '/api': 'http://localhost:8787', '/auth': 'http://localhost:8787' },
+  },
   test: {
     environment: 'node',
     globals: true,
     setupFiles: ['src/test-setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'worker/**/*.test.ts'],
   },
 })

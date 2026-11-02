@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { AppProvider } from './app/AppContext'
 import { AppController } from './app/controller'
+import { HttpApi } from './platform/api'
 import { browserStore } from './platform/storage'
 import { App } from './ui/App'
 import './styles.css'
@@ -13,7 +14,7 @@ try {
   // Persistence is a best-effort request.
 }
 
-const controller = new AppController(browserStore())
+const controller = new AppController(browserStore(), () => new Date(), new HttpApi())
 
 // autoUpdate: a new service worker activates as soon as it is ready; the app works offline after first load.
 // Reload for it, but never mid-Game (the app boots to Home): wait until the player is Home or the page is hidden.

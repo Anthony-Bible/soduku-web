@@ -1,0 +1,28 @@
+// One Worker serves the static app (dist/) and the /api/* and /auth/* endpoints.
+// Secrets (never in this file): AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, set with `wrangler secret put`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sudoku",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+  "routes": [{ "pattern": "sudoku.anthony.bible", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sudoku",
+      "database_id": "8791a18a-9b73-4dd5-9c85-7068f81ea1d9",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "SES_REGION": "us-west-2",
+    "EMAIL_FROM": "Sudoku <noreply@sudoku.anthony.bible>",
+    "APP_ORIGIN": "https://sudoku.anthony.bible"
+  }
+}
