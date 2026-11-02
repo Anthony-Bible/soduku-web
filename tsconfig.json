@@ -15,5 +15,5 @@
     "noEmit": true,
     "types": ["node", "vite/client", "vite-plugin-pwa/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts", "pwa-assets.config.ts", "eslint.config.js"]
+  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts", "pwa-assets.config.ts", "eslint.config.js"]
 }

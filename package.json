@@ -13,7 +13,8 @@
     "icons": "pwa-assets-generator",
     "dev:worker": "wrangler dev",
     "deploy:dry-run": "wrangler deploy --dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply sudoku --local"
+    "db:migrate:local": "wrangler d1 migrations apply sudoku --local",
+    "e2e": "pnpm build && playwright test"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261101.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
