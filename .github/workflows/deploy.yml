@@ -11,7 +11,6 @@ concurrency:
 
 permissions:
   contents: read
-  deployments: write
 
 jobs:
   test-and-deploy:
@@ -36,8 +35,7 @@ jobs:
       # Forked PRs have no access to secrets, so they only run the checks above.
       - name: Deploy to Cloudflare Pages
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy dist --project-name sudoku-web --branch ${{ github.head_ref || github.ref_name }} --commit-hash ${{ github.sha }}
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.86.0 pages deploy dist --project-name sudoku-web --branch "$BRANCH" --commit-hash "$GITHUB_SHA"
