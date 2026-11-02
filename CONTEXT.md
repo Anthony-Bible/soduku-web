@@ -14,6 +14,10 @@ _Avoid_: Round, session, match
 A value entered into a cell that differs from the solution. Counted, never fatal.
 _Avoid_: Strike, life, error
 
+**Statistics**:
+For each difficulty, the Games played and won and the best winning time, counted across every device of an Account; they are never reset.
+_Avoid_: Stats, scores, records
+
 ### Daily
 
 **Daily Puzzle**:
@@ -40,10 +44,36 @@ _Avoid_: Best streak, record
 The month view showing, for each day, whether its Daily Puzzle has an On-Day Solve, a Catch-Up Solve, or neither; past days can be opened from it.
 _Avoid_: History, log
 
+### Accounts
+
+**Account**:
+A person's identity, keyed by their email address, under which their progress is kept and synced across devices.
+_Avoid_: User, profile, login
+
+**Invite List**:
+The email addresses allowed to create an Account; any other address is never sent anything.
+_Avoid_: Allowlist, whitelist, beta list
+
+**Sign-in Email**:
+The email sent to an address on the Invite List, carrying one Magic Link and one Sign-in Code that are valid for the same short window.
+_Avoid_: Login email, verification email
+
+**Magic Link**:
+The link in a Sign-in Email that signs in whichever browser opens it.
+_Avoid_: Login link, verification link, token
+
+**Sign-in Code**:
+The six-digit code in a Sign-in Email, typed into the app to sign in that device; it is how an installed app signs in.
+_Avoid_: OTP, PIN, verification code
+
+**Signed Out**:
+Playing with no Account, where progress lives only on this device; every feature except sync still works.
+_Avoid_: Guest, anonymous, offline mode
+
 ### Rewards
 
 **Achievement**:
-A named goal kept on the device that unlocks once and stays unlocked, grouped as Streak, Milestone, Skill or Calendar.
+A named goal, kept with the Account or on the device when Signed Out, that unlocks once and stays unlocked, grouped as Streak, Milestone, Skill or Calendar.
 _Avoid_: Badge, trophy, award
 
 **Perfect Week**:
@@ -60,6 +90,11 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 - A **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
 - The **Calendar** distinguishes **On-Day Solves** from **Catch-Up Solves**
 - Skill and Milestone **Achievements** count any solved **Game**, ordinary or **Daily Puzzle**; Streak and Calendar **Achievements** count only **Daily Puzzles**
+- An **Account** can only be created for an email on the **Invite List**; the first **Sign-in Email** it uses creates it, so there is no separate sign-up
+- A **Sign-in Email** is used once: using its **Magic Link** or its **Sign-in Code** spends both
+- Signing in merges the device's progress into the **Account**: every solve, unlock and best time from every device is kept, and nothing is discarded
+- A **Game** in progress follows its **Account** to every device; when two devices disagree, the one played most recently wins and the other's unfinished **Game** is dropped (it still counts as played)
+- Signing out sends any unsynced progress to the **Account**, then clears the device back to **Signed Out** with no progress
 - Any past day's **Daily Puzzle** can be opened for a **Catch-Up Solve**; future days cannot be opened
 
 ## Example dialogue
