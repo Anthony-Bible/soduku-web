@@ -1,10 +1,12 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { useApp } from '../app/AppContext'
 import { useFocusTrap } from './useFocusTrap'
 import { achievementInfo, displayName, shortTitle, type GameSession } from '../core'
 import { Confetti } from './Confetti'
 import { Icon, groupIcon } from './Icon'
 import { formatElapsed } from './format'
 import { usePrefersReducedMotion } from './hooks'
+import { canShare, shareResult, shareText, type ShareOutcome } from './share'
 
 export function WinOverlay({ session, onNewGame, onHome }: { session: GameSession; onNewGame: () => void; onHome: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -12,6 +14,20 @@ export function WinOverlay({ session, onNewGame, onHome }: { session: GameSessio
   const reduceMotion = usePrefersReducedMotion()
   const s = session.state
   const result = session.solveResult
+  const { controller, today } = useApp()
+  const [shareStatus, setShareStatus] = useState<ShareOutcome | null>(null)
+  const share = async () => {
+    const text = shareText({
+      difficulty: s.difficulty,
+      seconds: s.elapsedSeconds,
+      mistakes: s.mistakes,
+      hintsUsed: s.hintsUsed,
+      dailyDay: session.dailyDay,
+      streak: controller.profile.currentStreak(today),
+      url: window.location.origin,
+    })
+    setShareStatus(await shareResult(navigator, text))
+  }
   return (
     <div className="modal-backdrop win">
       <div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Puzzle Solved!">
@@ -41,10 +57,20 @@ export function WinOverlay({ session, onNewGame, onHome }: { session: GameSessio
           <button type="button" className="btn btn-primary" onClick={onNewGame} autoFocus>
             New Game
           </button>
+          {canShare(navigator) && (
+            <button type="button" className="btn" onClick={() => void share()}>
+              <Icon name="share" size={18} /> Share
+            </button>
+          )}
           <button type="button" className="btn" onClick={onHome}>
             Home
           </button>
         </div>
+        {(shareStatus === 'copied' || shareStatus === 'failed') && (
+          <p className="muted form-message" role="status">
+            {shareStatus === 'copied' ? 'Copied to the clipboard.' : "Couldn't share. Try again."}
+          </p>
+        )}
       </div>
       {!reduceMotion && <Confetti />}
     </div>

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { useApp } from '../app/AppContext'
+import { useInstall } from '../app/InstallContext'
 import { ApiError } from '../platform/api'
 import { ConfirmDialog } from './ConfirmDialog'
+import { InstallSection } from './Install'
 import { Sheet } from './Sheet'
 import { relativeTime } from './format'
 
@@ -32,6 +34,7 @@ function SignedOut() {
   }
 
   const otherOwner = sentTo === null ? null : controller.sync.progressOwnerOtherThan(sentTo)
+  const { iosStandalone } = useInstall()
 
   return (
     <div className="account-form">
@@ -69,7 +72,13 @@ function SignedOut() {
         </p>
       )}
       {sentTo !== null && <CodeEntry key={sentTo} email={sentTo} />}
-      {sentTo !== null && <p className="muted form-message">Or tap the link in the email if you&apos;re in a browser.</p>}
+      {sentTo !== null && (
+        <p className="muted form-message">
+          {iosStandalone
+            ? 'Type the code from the email here. Its link opens in Safari, not in this app.'
+            : "Or tap the link in the email if you're in a browser."}
+        </p>
+      )}
     </div>
   )
 }
@@ -238,6 +247,7 @@ export function AccountSheet() {
   return (
     <Sheet title="Account" onClose={() => controller.openSheet(null)}>
       {sync.account ? <SignedIn email={sync.account.email} /> : <SignedOut />}
+      <InstallSection />
     </Sheet>
   )
 }

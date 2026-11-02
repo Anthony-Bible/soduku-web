@@ -3,6 +3,7 @@ import { dailyDifficulty, displayName, longTitle, solveFor } from '../core'
 import { useApp } from '../app/AppContext'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Icon } from './Icon'
+import { InstallBanner } from './Install'
 import { accessibleElapsed, formatElapsed } from './format'
 
 function AccountButton() {
@@ -93,6 +94,7 @@ export function Home({ onDialogChange }: { onDialogChange?: (open: boolean) => v
             Achievements
           </button>
         </div>
+        <InstallBanner />
       </div>
       {confirmAbandon && (
         <ConfirmDialog

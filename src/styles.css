@@ -101,6 +101,12 @@ small { display: block; color: var(--muted); font-size: 0.8125rem; }
 .daily-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .daily-top h2 { font-size: 1.0625rem; }
 .daily-top p { font-size: 0.875rem; }
+.install-card { gap: 8px; }
+.install-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -8px -8px -4px 0; }
+.install-top h2 { font-size: 1.0625rem; display: inline-flex; align-items: center; gap: 8px; }
+.install-card svg, .install-section svg { vertical-align: -3px; }
+.install-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--grid-thin); }
+.install-section h3 { font-size: 1rem; }
 .streak { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--muted); }
 .streak.active { color: var(--orange-text); }
 .streak.active svg { color: var(--orange); }
