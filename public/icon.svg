@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#4f46e5"/>
+  <rect x="96" y="96" width="320" height="320" rx="20" fill="#fff"/>
+  <g stroke="#4f46e5" stroke-width="6" stroke-linecap="round">
+    <line x1="202.7" y1="96" x2="202.7" y2="416"/><line x1="309.3" y1="96" x2="309.3" y2="416"/>
+    <line x1="96" y1="202.7" x2="416" y2="202.7"/><line x1="96" y1="309.3" x2="416" y2="309.3"/>
+  </g>
+  <g stroke="#c7d2fe" stroke-width="2.5">
+    <line x1="149.3" y1="96" x2="149.3" y2="416"/><line x1="256" y1="96" x2="256" y2="416"/><line x1="362.7" y1="96" x2="362.7" y2="416"/>
+    <line x1="96" y1="149.3" x2="416" y2="149.3"/><line x1="96" y1="256" x2="416" y2="256"/><line x1="96" y1="362.7" x2="416" y2="362.7"/>
+  </g>
+  <g font-family="ui-rounded,system-ui,sans-serif" font-weight="700" font-size="60" fill="#4f46e5" text-anchor="middle">
+    <text x="123" y="136">5</text><text x="229" y="242">9</text><text x="336" y="349">3</text><text x="389" y="136">7</text><text x="123" y="389">1</text>
+  </g>
+</svg>
