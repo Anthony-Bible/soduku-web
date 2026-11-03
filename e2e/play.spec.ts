@@ -31,4 +31,11 @@ test('solving the Daily Puzzle marks it Solved and starts a Streak', async ({ pa
   await page.getByRole('dialog', { name: 'Puzzle Solved!' }).getByRole('button', { name: 'Home' }).click()
   await expect(daily.getByRole('button', { name: /Solved/ })).toBeDisabled()
   await expect(daily.getByText('Streak 1 day')).toBeAttached()
+
+  // The result stays available in the Calendar after the win screen is gone.
+  await daily.getByRole('button', { name: 'Calendar' }).click()
+  await page.getByRole('button', { name: /, solved on the day$/ }).click()
+  const result = page.getByRole('region', { name: 'Daily Puzzle result' })
+  await expect(result.getByText(/Mistakes 0 · Hints used 0/)).toBeVisible()
+  await expect(result.getByRole('button', { name: 'Share' })).toBeVisible()
 })

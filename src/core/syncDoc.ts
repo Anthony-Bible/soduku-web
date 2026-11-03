@@ -385,3 +385,29 @@ export function parseSyncDoc(raw: unknown): SyncDoc | null {
   if (typeof clockRaw !== 'number' || !Number.isFinite(clockRaw) || clockRaw < 0) return null
   return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, clock: clockRaw }
 }
+
+// MARK: Results
+
+/** How a won Game went, as the win screen and the Share text show it. */
+export interface WinResult {
+  readonly difficulty: Difficulty
+  readonly seconds: number
+  readonly mistakes: number
+  readonly hintsUsed: number
+}
+
+/**
+ * The win to show for a day's Daily Puzzle: the fastest recorded one (two devices can each solve it before
+ * they sync), then the fewest mistakes. Null when no win with its details was recorded, as for days solved
+ * before Games were recorded.
+ */
+export function dailyResult(doc: SyncDoc, day: CalendarDay): WinResult | null {
+  let best: WinResult | null = null
+  for (const id of Object.keys(doc.games).sort()) {
+    const g = doc.games[id]
+    if (g.dailyDay !== day || g.wonSeconds === null || g.mistakes === null || g.hintsUsed === null) continue
+    const r: WinResult = { difficulty: g.difficulty, seconds: g.wonSeconds, mistakes: g.mistakes, hintsUsed: g.hintsUsed }
+    if (best === null || r.seconds < best.seconds || (r.seconds === best.seconds && r.mistakes < best.mistakes)) best = r
+  }
+  return best
+}
