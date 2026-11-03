@@ -35,8 +35,8 @@ function setup() {
   return controller
 }
 
-/** Solves a day's Daily Puzzle with one mistake on the first empty cell, then goes Home. */
-function solveDaily(controller: AppController, day: CalendarDay) {
+/** Solves a day's Daily Puzzle with one mistake on the first empty cell, then goes Home unless told to stay. */
+function solveDaily(controller: AppController, day: CalendarDay, stay = false) {
   act(() => {
     controller.openDaily(day)
     const session = controller.getSnapshot().session!
@@ -52,7 +52,7 @@ function solveDaily(controller: AppController, day: CalendarDay) {
       }
       session.tapNumber(right)
     }
-    controller.goHome()
+    if (!stay) controller.goHome()
   })
 }
 
@@ -98,5 +98,22 @@ describe('a solved day in the Calendar', () => {
     await u.click(screen.getByRole('button', { name: 'Next month' }))
     await u.click(dayButton(today - 1))
     expect(controller.getSnapshot().session?.dailyDay).toBe(today - 1)
+  })
+})
+
+describe('the win screen', () => {
+  it("leaves today's Streak out when the solve was a past day", async () => {
+    const u = user()
+    const controller = setup()
+    const today = controller.getSnapshot().today
+    now = new Date(2026, 10, 2, 12)
+    solveDaily(controller, today - 1)
+    now = new Date(2026, 10, 3, 12)
+    solveDaily(controller, today)
+    expect(controller.profile.currentStreak(today)).toBe(2)
+    solveDaily(controller, today - 5, true)
+    const win = screen.getByRole('dialog', { name: 'Puzzle Solved!' })
+    await u.click(within(win).getByRole('button', { name: 'Share' }))
+    expect(copied.at(-1)).toMatch(/^Sudoku · Daily Puzzle Oct 29 · \w+\n⏱ \d+:\d\d · 1 mistake\n/)
   })
 })

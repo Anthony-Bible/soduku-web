@@ -21,7 +21,8 @@ export function WinOverlay({ session, onNewGame, onHome }: { session: GameSessio
     mistakes: s.mistakes,
     hintsUsed: s.hintsUsed,
     dailyDay: session.dailyDay,
-    streak: controller.profile.currentStreak(today),
+    // Today's Streak means nothing next to a past day's result.
+    streak: session.dailyDay === today ? controller.profile.currentStreak(today) : 0,
   })
   return (
     <div className="modal-backdrop win">
