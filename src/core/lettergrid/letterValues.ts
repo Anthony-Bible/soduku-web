@@ -29,3 +29,18 @@ export function deriveLetterValues(words: readonly string[]): Record<string, num
     }),
   )
 }
+
+/** Total the derived tile weights are scaled to (before rounding and clamping). */
+export const TILE_WEIGHT_TOTAL = 100
+
+/**
+ * Tile Run draw weights: each letter's share of all letters in the Word List, scaled to
+ * TILE_WEIGHT_TOTAL, rounded and clamped to at least 1 so every letter can appear.
+ */
+export function deriveTileWeights(words: readonly string[]): Record<string, number> {
+  const counts = letterCounts(words)
+  const total = Object.values(counts).reduce((n, v) => n + v, 0) || 1
+  return Object.fromEntries(
+    [...ALPHABET].map((c) => [c, Math.max(1, Math.round((counts[c] * TILE_WEIGHT_TOTAL) / total))]),
+  )
+}

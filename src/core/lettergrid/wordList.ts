@@ -12,6 +12,8 @@ export function wordListPath(version: number): string {
 export interface WordList {
   readonly version: number
   readonly size: number
+  /** Every accepted word, sorted, lowercase a-z. Lets a solver walk prefixes without a trie. */
+  readonly words: readonly string[]
   /** True if `word` (any case) is accepted. */
   isWord(word: string): boolean
   /** Seed Word candidates (never offensive), in a fixed order, so a seeded pick is stable. */
@@ -20,9 +22,12 @@ export interface WordList {
 
 export function createWordList(data: WordListData): WordList {
   const set = new Set(data.words)
+  // Sorted and de-duplicated here, whatever order the data came in: the solver walks prefixes by binary search.
+  const sorted = [...set].sort()
   return {
     version: data.version,
     size: set.size,
+    words: sorted,
     isWord: (word) => set.has(word.toLowerCase()),
     seedCandidates: data.seeds,
   }
