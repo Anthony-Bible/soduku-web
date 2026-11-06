@@ -4,6 +4,16 @@ import type { DailyLog, SolveKind } from './dailyLog'
 import { DIFFICULTIES, isDifficulty, type Difficulty } from './difficulty'
 import type { GameState } from './gameState'
 import type { Statistics } from './statistics'
+import {
+  clampLettergrid,
+  emptyLettergridProgress,
+  lettergridClock,
+  mergeLettergridProgress,
+  normalizeLettergridProgress,
+  parseLettergridProgress,
+  type LettergridProgress,
+} from './lettergridProgress'
+import { cmp, mergeSlots, stableStringify, unionMap } from './stable'
 import { isGameState, isInt, isNonNegInt, isObj, isSafeId } from './validate'
 
 // The synced document (ADR 0002). Every piece is stored in a form that merges cleanly, so `mergeDocs` is
@@ -66,29 +76,18 @@ export interface SyncDoc {
    * Keyed by a migration id, merged by max, so two copies of the same migration never double count.
    */
   readonly legacySolves: Readonly<Record<string, number>>
+  /** Lettergrid's own Daily log, Game-in-progress slots and solves (ADR 0003). Sudoku data never reads it. */
+  readonly lettergrid: LettergridProgress
 }
 
-export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, clock: 0 })
+export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, lettergrid: emptyLettergridProgress(), clock: 0 })
 
 // MARK: Deterministic ordering
 
-/** JSON with sorted keys, so equal values always compare equal as strings. */
-export function stableStringify(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`
-  if (typeof v === 'object' && v !== null) {
-    const o = v as Record<string, unknown>
-    return `{${Object.keys(o)
-      .filter((k) => o[k] !== undefined)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(v) ?? 'null'
-}
+export { stableStringify, mergeSlots }
 
 export const docsEqual = (a: SyncDoc, b: SyncDoc): boolean => stableStringify(a) === stableStringify(b)
 
-const cmp = (a: number, b: number): number => (a < b ? -1 : a > b ? 1 : 0)
 const DIFF_INDEX = new Map<string, number>(DIFFICULTIES.map((d, i) => [d, i]))
 
 // MARK: Merge
@@ -132,25 +131,9 @@ export function mergeRecords(a: GameRecord, b: GameRecord): GameRecord {
   }
 }
 
-/** The slot that wins a conflict: newest `updatedAt`, then a cleared marker, then a stable tie-break. */
-export function mergeSlots(a: Slot, b: Slot): Slot {
-  const order =
-    cmp(a.updatedAt, b.updatedAt) ||
-    cmp(a.game === null ? 1 : 0, b.game === null ? 1 : 0) ||
-    (stableStringify(a.game) <= stableStringify(b.game) ? -1 : 1)
-  return order >= 0 ? a : b
-}
-
-function unionMap<T>(a: Readonly<Record<string, T>>, b: Readonly<Record<string, T>>, pick: (x: T, y: T) => T): Record<string, T> {
-  const out: Record<string, T> = {}
-  for (const k of Object.keys(a)) out[k] = a[k]
-  for (const k of Object.keys(b)) out[k] = Object.hasOwn(out, k) ? pick(out[k], b[k]) : b[k]
-  return out
-}
-
 const slotDay = (key: string): number | null => (key.startsWith('daily.') ? Number(key.slice(6)) : null)
 
-/** The newest Game start or slot write in a document. */
+/** The newest Sudoku Game start or slot write. Lettergrid keeps its own clock, so it never moves this one. */
 function contentClock(doc: SyncDoc): number {
   let t = 0
   for (const r of Object.values(doc.games)) if (r.startedAt > t) t = r.startedAt
@@ -174,7 +157,7 @@ export function normalizeDoc(doc: SyncDoc): SyncDoc {
     if (day !== null && doc.solved[day] === true) continue
     slots[key] = slot
   }
-  return { ...doc, slots, clock }
+  return { ...doc, slots, lettergrid: normalizeLettergridProgress(doc.lettergrid, SLOT_RETENTION_DAYS * DAY_MS), clock }
 }
 
 /** How far past the current time a timestamp may be before `clampDoc` pulls it back. */
@@ -187,12 +170,12 @@ export const MAX_CLOCK_SKEW_MS = DAY_MS
  * `mergeDocs`, so the merge laws are untouched.
  */
 export function clampDoc(doc: SyncDoc, maxTime: number): SyncDoc {
-  if (Math.max(doc.clock, contentClock(doc)) <= maxTime) return doc
+  if (Math.max(doc.clock, contentClock(doc), lettergridClock(doc.lettergrid)) <= maxTime) return doc
   const games: Record<string, GameRecord> = {}
   for (const [id, r] of Object.entries(doc.games)) games[id] = r.startedAt > maxTime ? { ...r, startedAt: maxTime } : r
   const slots: Record<string, Slot> = {}
   for (const [key, slot] of Object.entries(doc.slots)) slots[key] = slot.updatedAt > maxTime ? { ...slot, updatedAt: maxTime } : slot
-  return { ...doc, games, slots, clock: Math.min(doc.clock, maxTime) }
+  return { ...doc, games, slots, lettergrid: clampLettergrid(doc.lettergrid, maxTime), clock: Math.min(doc.clock, maxTime) }
 }
 
 /** Merges two documents. The result does not depend on argument order or grouping, and loses nothing. */
@@ -205,6 +188,7 @@ export function mergeDocs(a: SyncDoc, b: SyncDoc): SyncDoc {
     unlockedAt: unionMap(a.unlockedAt as Record<string, number>, b.unlockedAt as Record<string, number>, minNumber) as SyncDoc['unlockedAt'],
     slots: unionMap(a.slots, b.slots, mergeSlots),
     legacySolves: unionMap(a.legacySolves, b.legacySolves, (x, y) => Math.max(x, y)),
+    lettergrid: mergeLettergridProgress(a.lettergrid, b.lettergrid),
     // Taken from the inputs (not the merged result, where an earlier start may have replaced a later one).
     clock: Math.max(a.clock, b.clock, contentClock(a), contentClock(b)),
   })
@@ -381,9 +365,12 @@ export function parseSyncDoc(raw: unknown): SyncDoc | null {
     if (!isSafeId(k) || !isNonNegInt(n)) return null
     outLegacy[k] = n
   }
+  // Documents from before Lettergrid have no such field; they load as having no Lettergrid progress.
+  const lettergrid = raw.lettergrid === undefined ? emptyLettergridProgress() : parseLettergridProgress(raw.lettergrid)
+  if (!lettergrid) return null
   const clockRaw = raw.clock === undefined ? 0 : raw.clock
   if (typeof clockRaw !== 'number' || !Number.isFinite(clockRaw) || clockRaw < 0) return null
-  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, clock: clockRaw }
+  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, lettergrid, clock: clockRaw }
 }
 
 // MARK: Results

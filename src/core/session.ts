@@ -9,7 +9,21 @@ import type { Puzzle } from './generator'
 import type { Position } from './position'
 import { randomId } from './id'
 import type { SaveStore } from './saveStore'
-import type { Statistics } from './statistics'
+import { isFinished as isLettergridDone, scoreOf } from './lettergrid/game'
+import { starsFor } from './lettergrid/par'
+import type { LettergridState } from './lettergrid/game'
+import {
+  addLettergridSolve,
+  countedSolveFor,
+  deriveLettergridLog,
+  deriveLettergridStatistics,
+  liveLettergridSlot,
+  openLettergridDay,
+  setLettergridSlot,
+  type LettergridSaved,
+  type LettergridSolve,
+} from './lettergridProgress'
+import type { LettergridStatistics, Statistics } from './statistics'
 import {
   addGame,
   dailySlotKey,
@@ -72,7 +86,14 @@ export interface SolveReport extends SolveSummary {
  */
 export class PlayerProfile {
   private doc: SyncDoc
-  private derived: { doc: SyncDoc; statistics: Statistics; dailyLog: DailyLog; achievements: AchievementProgress } | null = null
+  private derived: {
+    doc: SyncDoc
+    statistics: Statistics
+    dailyLog: DailyLog
+    achievements: AchievementProgress
+    lettergridLog: DailyLog
+    lettergridStatistics: LettergridStatistics
+  } | null = null
   /** Called after a Game is won, so the app can sync soon. */
   onSolve: (() => void) | null = null
 
@@ -128,6 +149,8 @@ export class PlayerProfile {
         statistics: deriveStatistics(this.doc),
         dailyLog: deriveDailyLog(this.doc),
         achievements: { solveCount: wonGameCount(this.doc), unlockedAt: this.doc.unlockedAt },
+        lettergridLog: deriveLettergridLog(this.doc.lettergrid),
+        lettergridStatistics: deriveLettergridStatistics(this.doc.lettergrid),
       }
     }
     return this.derived
@@ -142,6 +165,85 @@ export class PlayerProfile {
   }
   get achievements(): AchievementProgress {
     return this.view.achievements
+  }
+
+  /** Lettergrid's own Daily log: its Streak, Longest Streak and Calendar come from this and nothing of Sudoku's. */
+  get lettergridLog(): DailyLog {
+    return this.view.lettergridLog
+  }
+  get lettergridStatistics(): LettergridStatistics {
+    return this.view.lettergridStatistics
+  }
+  lettergridStreak(today: CalendarDay): number {
+    return currentStreak(this.lettergridLog, today)
+  }
+  /** The solve that counts for a day (the earliest finished), if any. */
+  lettergridSolve(day: CalendarDay): LettergridSolve | null {
+    this.reload()
+    return countedSolveFor(this.doc.lettergrid, day)
+  }
+
+  // Lettergrid Dailies (Daily-only: there are no ordinary Lettergrid games)
+
+  /**
+   * Opens a day's Lettergrid Daily and records the first opening. Returns the saved game to continue,
+   * 'needsGame' when the caller should build the day's game and pass it to `startLettergridDaily`, or null
+   * for a future day or one already solved.
+   */
+  openLettergridDaily(day: CalendarDay, today: CalendarDay): LettergridSaved | 'needsGame' | null {
+    this.reload()
+    if (day > today || countedSolveFor(this.doc.lettergrid, day) !== null) return null
+    this.update((doc) => ({ ...doc, lettergrid: openLettergridDay(doc.lettergrid, day, today) }))
+    return liveLettergridSlot(this.doc.lettergrid, day)?.game ?? 'needsGame'
+  }
+
+  startLettergridDaily(state: LettergridState, day: CalendarDay): LettergridSaved {
+    // Out of order calls never replace a live game or start one on a solved day.
+    this.reload()
+    const live = liveLettergridSlot(this.doc.lettergrid, day)
+    if (live) return live.game
+    if (countedSolveFor(this.doc.lettergrid, day) !== null) throw new Error(`Lettergrid Daily ${day} is already solved`)
+    const saved: LettergridSaved = { id: this.newId(), startedAt: this.now(), state }
+    this.saveLettergrid(day, saved)
+    return saved
+  }
+
+  /** Saves the game in progress; a finished one is recorded as a solve and leaves a cleared marker. */
+  saveLettergrid(day: CalendarDay, saved: LettergridSaved): void {
+    if (isLettergridDone(saved.state)) {
+      this.recordLettergridSolve(day, saved)
+      return
+    }
+    this.update((doc) => ({ ...doc, lettergrid: setLettergridSlot(doc.lettergrid, day, saved, this.now()) }))
+  }
+
+  hasLettergridInProgress(day: CalendarDay): boolean {
+    this.reload()
+    return countedSolveFor(this.doc.lettergrid, day) === null && liveLettergridSlot(this.doc.lettergrid, day) !== null
+  }
+
+  /** Records a finished Lettergrid Daily. Every solve is kept; the earliest finished counts. */
+  private recordLettergridSolve(day: CalendarDay, saved: LettergridSaved): LettergridSolve | null {
+    this.reload()
+    if (!isLettergridDone(saved.state)) return null
+    const prior = this.doc.lettergrid.solves[saved.id]
+    if (prior) return prior
+    const state = saved.state
+    const score = scoreOf(state)
+    const solve: LettergridSolve = {
+      gameId: saved.id,
+      day,
+      finishedAt: this.now(),
+      score,
+      stars: starsFor(score, state.par),
+      plays: state.plays.map((p) => (p.kind === 'swap' ? null : p.score)),
+    }
+    this.update((doc) => {
+      const lettergrid = addLettergridSolve(doc.lettergrid, solve)
+      return { ...doc, lettergrid: setLettergridSlot(lettergrid, day, null, this.now()) }
+    })
+    this.onSolve?.()
+    return solve
   }
 
   /** Writes a Game-in-progress slot (or its cleared marker). */

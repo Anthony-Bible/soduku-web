@@ -24,7 +24,7 @@ A value entered into a cell that differs from the solution. Counted, never fatal
 _Avoid_: Strike, life, error
 
 **Statistics**:
-Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached.
+Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached. (Working reading, pending confirmation: a Daily counts as played once its day is opened, and a 3-star solve counts toward all three Par tiers.)
 _Avoid_: Stats, scores, records
 
 ### Daily
