@@ -106,3 +106,17 @@ To remove someone for good, delete the Account and also remove the invite.
 - `src/ui` holds the React components and `src/styles.css` (light/dark via `prefers-color-scheme`, safe-area insets, reduced-motion support).
 
 Keyboard: digits 1-9 enter, Backspace/Delete erase, N toggles notes, Z or Ctrl+Z undo, arrows or hjkl move, P or Esc pause.
+
+## Lettergrid Word List
+
+Lettergrid's Word List is a frozen, versioned artifact at `public/lettergrid/wordlist-v1.txt` (about 238 KB, 81 KB gzipped), built from SCOWL/ESDB; see [NOTICES.md](NOTICES.md) for the source, parameters and licence. The app loads it only when Lettergrid opens (`src/app/wordListLoader.ts`), and the service worker caches it for offline play. It is not precached, so Sudoku's first load is unchanged.
+
+To build a version from two SCOWL exports (size 60 and size 35, see NOTICES.md for the parameters) and ESDB's `data/scowl-pre.txt` (which tags abbreviations):
+
+```sh
+pnpm wordlist path/to/scowl-60.txt path/to/scowl-35.txt path/to/esdb/data/scowl-pre.txt 1e5b7d3
+```
+
+The last argument is the ESDB git revision the inputs came from; it is written into the artifact. To also check the committed artifact against its source in `pnpm test`, set `LETTERGRID_SCOWL_60`, `LETTERGRID_SCOWL_35` and `LETTERGRID_SCOWL_PRE` to the three input paths; the test is skipped when they are unset.
+
+This writes the artifact and `src/core/lettergrid/letterValuesV<N>.ts`, and refuses to overwrite either: published Dailies are judged forever against the version they were published with (ADR 0003), so a changed list is a new version (bump `CURRENT_WORD_LIST_VERSION`, write `wordlist-v2.txt`, register its values in `letterValuesTable.ts`), never an edit of v1. A test pins the SHA-256 of v1.

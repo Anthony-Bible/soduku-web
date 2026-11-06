@@ -50,7 +50,7 @@ Spending a Play to return the whole Rack to the back of the Tile Run instead of 
 _Avoid_: Exchange, pass
 
 **Seed Word**:
-The word already on the grid when a Lettergrid Daily Puzzle opens, the same for every player that day; it is never a slur or a swear word, though both can be played.
+The word already on the grid when a Lettergrid Daily Puzzle opens, the same for every player that day; it is never a slur or a swear word, though both can be played. Seed Words are drawn only from common words (SCOWL size 35, 3 to 7 letters) in the Word List, so the opening word is familiar to everyone.
 _Avoid_: Starter word, opening word
 
 **Word List**:

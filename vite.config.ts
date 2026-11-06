@@ -35,6 +35,27 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        // The Lettergrid Word List is not in the Sudoku critical path: it is fetched when Lettergrid
+        // opens, then kept for offline. Each version has its own immutable file name.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /^\/lettergrid\/wordlist-v\d+\.txt$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'lettergrid-wordlists',
+              // The Worker answers an unknown path with index.html and a 200 (single-page-application
+              // fallback). Never keep that under a Word List URL, or the real file could never load.
+              plugins: [
+                {
+                  cacheWillUpdate: async ({ response }: { response: Response }) =>
+                    response.status === 200 && !(response.headers.get('content-type') ?? '').includes('text/html')
+                      ? response
+                      : null,
+                },
+              ],
+            },
+          },
+        ],
       },
     }),
   ],
