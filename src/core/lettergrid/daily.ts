@@ -15,7 +15,7 @@ import { newGame, type LettergridState } from './game'
 import { PAR_SOLVER_VERSION, parFromGreedy, type Par } from './par'
 import { solveGreedy } from './solver'
 import { generateTileRun } from './tileRun'
-import { CURRENT_WORD_LIST_VERSION, type WordList } from './wordList'
+import type { WordList } from './wordList'
 
 /**
  * The Lettergrid generator version. Bump only together with a new generation path picked by date,
@@ -27,9 +27,22 @@ export const LETTERGRID_GENERATOR_VERSION = 1
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the date picks the version once there are several
 export const generatorVersionFor = (_day: CalendarDay): number => LETTERGRID_GENERATOR_VERSION
 
-/** Which Word List version `day`'s Daily is published with. Only v1 exists so far. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the date picks the version once there are several
-export const wordListVersionFor = (_day: CalendarDay): number => CURRENT_WORD_LIST_VERSION
+/**
+ * The Word List version each Daily is published with, as `[first day, version]` rows in date order.
+ * To publish a new version, append a row starting on a FUTURE day. Never edit or remove a row:
+ * every past day must keep the Word List, Seed Word and Par it was published with (ADR 0003).
+ * This is deliberately independent of CURRENT_WORD_LIST_VERSION, which only names the newest build.
+ */
+export const WORD_LIST_SCHEDULE: readonly (readonly [from: CalendarDay, version: number])[] = [
+  [Number.NEGATIVE_INFINITY, 1],
+]
+
+/** Which Word List version `day`'s Daily is published with, picked by date from WORD_LIST_SCHEDULE. */
+export function wordListVersionFor(day: CalendarDay): number {
+  let version = WORD_LIST_SCHEDULE[0][1]
+  for (const [from, v] of WORD_LIST_SCHEDULE) if (day >= from) version = v
+  return version
+}
 
 /** Which Par solver version scores `day`'s Daily. Only v1 exists, so every day maps to it. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the date picks the version once there are several

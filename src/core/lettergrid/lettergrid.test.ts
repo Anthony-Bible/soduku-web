@@ -5,7 +5,7 @@ import { dayFromYMD } from '../calendarDay'
 import { SeededRandom } from '../random'
 import { isOffensive } from './blocklist'
 import { BONUS_COUNTS_V1, generateBonuses } from './bonuses'
-import { generateLayout, lettergridDaily, lettergridSeed, type LettergridDaily } from './daily'
+import { generateLayout, lettergridDaily, lettergridSeed, WORD_LIST_SCHEDULE, wordListVersionFor, type LettergridDaily } from './daily'
 import { evaluatePlay } from './evaluate'
 import {
   applyAction,
@@ -34,9 +34,8 @@ import { deriveTileWeights } from './letterValues'
 import { TILE_WEIGHTS_V1 } from './tileWeightsV1'
 import { CURRENT_WORD_LIST_VERSION, createWordList, parseWordList, wordListPath } from './wordList'
 
-const words = parseWordList(
-  readFileSync(resolve(__dirname, '../../../public', wordListPath(CURRENT_WORD_LIST_VERSION)), 'utf8'),
-)
+// Pinned to v1, not CURRENT_WORD_LIST_VERSION: every day these tests generate is published with v1.
+const words = parseWordList(readFileSync(resolve(__dirname, '../../../public', wordListPath(1)), 'utf8'))
 const START = dayFromYMD(2026, 11, 5)
 const seedArb = fc.bigInt({ min: 0n, max: 2n ** 64n - 1n })
 const dayArb = fc.integer({ min: dayFromYMD(2024, 1, 1), max: dayFromYMD(2100, 1, 1) })
@@ -430,3 +429,29 @@ const GOLDEN = {
   bonuses: '....L2........L2........L2....L3L3L2W2......L2..W2..W2..........L2..W2................W3..L2....L2L2......L2........L2........L2W3L3....W3..W2L3W2L3............L3',
   par: { solverVersion: 1, greedyScore: 281, tiers: [168, 224, 266] },
 }
+
+describe('Word List version schedule (ADR 0003)', () => {
+  it('publishes every day up to the end of 2026 with Word List v1, whatever the newest build is', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: dayFromYMD(1970, 1, 1), max: dayFromYMD(2026, 12, 31) }), (day) => {
+        expect(wordListVersionFor(day)).toBe(1)
+      }),
+    )
+  })
+
+  it('picks the latest row starting on or before the day, and rows are in date order', () => {
+    for (let i = 1; i < WORD_LIST_SCHEDULE.length; i++) {
+      expect(WORD_LIST_SCHEDULE[i][0]).toBeGreaterThan(WORD_LIST_SCHEDULE[i - 1][0])
+    }
+    fc.assert(
+      fc.property(dayArb, (day) => {
+        const rows = WORD_LIST_SCHEDULE.filter(([from]) => from <= day)
+        expect(wordListVersionFor(day)).toBe(rows[rows.length - 1][1])
+      }),
+    )
+  })
+
+  it('never schedules a Word List version that has not been built', () => {
+    for (const [, version] of WORD_LIST_SCHEDULE) expect(version).toBeLessThanOrEqual(CURRENT_WORD_LIST_VERSION)
+  })
+})

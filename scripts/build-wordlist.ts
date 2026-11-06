@@ -29,14 +29,16 @@ const text = (path: string) => readFileSync(path, 'utf8')
 const lines = (path: string) => text(path).split('\n')
 const sha = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
 
-// A published version is frozen (ADR 0003): never overwrite it, bump CURRENT_WORD_LIST_VERSION instead.
+// A published version is frozen (ADR 0003): never overwrite it. To build a new one, bump
+// CURRENT_WORD_LIST_VERSION, then append a row to WORD_LIST_SCHEDULE (src/core/lettergrid/daily.ts)
+// starting on a future day. Bumping the constant alone publishes nothing and changes no past day.
 const version = CURRENT_WORD_LIST_VERSION
 const artifact = resolve(root, 'public', wordListPath(version))
 const valuesFile = resolve(root, `src/core/lettergrid/letterValuesV${version}.ts`)
 const weightsFile = resolve(root, `src/core/lettergrid/tileWeightsV${version}.ts`)
 for (const path of [artifact, valuesFile, weightsFile]) {
   if (existsSync(path)) {
-    console.error(`${path} already exists. Word List v${version} is frozen: bump CURRENT_WORD_LIST_VERSION.`)
+    console.error(`${path} already exists. Word List v${version} is frozen: bump CURRENT_WORD_LIST_VERSION and append a WORD_LIST_SCHEDULE row.`)
     process.exit(1)
   }
 }
