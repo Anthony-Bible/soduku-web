@@ -27,6 +27,28 @@ export function shareText(r: ShareInput): string {
   return `${title}\n${parts.join(' · ')}\n${r.url}`
 }
 
+export interface LettergridShareInput {
+  day: CalendarDay
+  /** Score of each Play in order; null marks a Swap. */
+  plays: readonly (number | null)[]
+  score: number
+  /** Par tiers reached, 0 to 3. */
+  stars: number
+  /** The current Streak; shown when it is 2 or more. Callers pass 0 for a past day's result. */
+  streak: number
+  url: string
+}
+
+/** The Lettergrid result text for the share sheet. It carries scores only, never a letter or a word. */
+export function lettergridShareText(r: LettergridShareInput): string {
+  const stars = '★'.repeat(Math.max(0, Math.min(3, r.stars)))
+  const line = `${r.plays.map((p) => (p === null ? '↺' : String(p))).join(' · ')} = ${r.score}${stars ? ` ${stars}` : ''}`
+  const lines = [`Lettergrid · Daily Puzzle ${shortTitle(r.day)}`, line]
+  if (r.streak >= 2) lines.push(`🔥 ${r.streak}-day streak`)
+  lines.push(r.url)
+  return lines.join('\n')
+}
+
 export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed'
 
 export interface ShareHost {

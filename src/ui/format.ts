@@ -32,3 +32,6 @@ export function relativeTime(now: number, then: number): string {
   if (hours < 24) return unit(hours, 'hour')
   return unit(Math.floor(hours / 24), 'day')
 }
+
+export const starsText = (stars: number): string => '★'.repeat(stars)
+export const starsWords = (stars: number): string => (stars === 0 ? 'no stars' : `${stars} ${stars === 1 ? 'star' : 'stars'}`)
