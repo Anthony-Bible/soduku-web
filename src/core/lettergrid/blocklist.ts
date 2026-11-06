@@ -1,5 +1,7 @@
+import ldnoobw from 'naughty-words/en.json'
+
 /**
- * Words that must never be a Seed Word: slurs and swear words. They stay playable (CONTEXT.md);
+ * Our own hand-picked words that must never be a Seed Word: slurs and swear words. They stay playable (CONTEXT.md);
  * this list is used only to exclude Seed Word candidates. Lowercase a-z only.
  *
  * The list is frozen with the Word List version: changing it changes which Seed Words a given
@@ -25,8 +27,18 @@ export const OFFENSIVE_WORDS: readonly string[] = [
   // anatomical, sexual
   'penis', 'vagina', 'anus', 'anal', 'orgasm', 'semen', 'sperm', 'muff', 'testicle', 'scrotum',
   'rectum', 'vulva', 'phallus', 'erection', 'erotic', 'incest', 'lust', 'nude', 'nipple', 'fetish',
-  'gonad', 'rimjob', 'lube',
+  'gonad', 'rimjob', 'lube', 'pervert', 'perv', 'molest',
 ]
+
+/**
+ * The single words from LDNOOBW ("List of Dirty, Naughty, Obscene, and Otherwise Bad Words",
+ * CC BY 4.0, see NOTICES.md) via the `naughty-words` package, pinned to an exact version because the
+ * blocklist is frozen with the Word List. Its multi-word phrases can never be a Seed Word, so they are dropped.
+ */
+export const LDNOOBW_WORDS: readonly string[] = (ldnoobw as string[]).filter((w) => /^[a-z]+$/.test(w))
+
+/** Every blocked word: our list unioned with LDNOOBW's single words. */
+export const BLOCKED_WORDS: readonly string[] = [...new Set([...OFFENSIVE_WORDS, ...LDNOOBW_WORDS])].sort()
 
 /** Coarse stems: a word containing one of these is out, so compounds (bullshit, dickhead) are caught. */
 const COARSE_STEMS = [
@@ -34,11 +46,14 @@ const COARSE_STEMS = [
   'prick', 'jackass', 'dumbass',
 ] as const
 
-const SUFFIXES = ['', 's', 'es', 'ed', 'er', 'ers', 'ing', 'y'] as const
+const SUFFIXES = ['', 's', 'es', 'ed', 'er', 'ers', 'est', 'ing', 'y', 'ier', 'iest', 'ic', 'al'] as const
 
-const BLOCKED = new Set(OFFENSIVE_WORDS)
+const BLOCKED = new Set(BLOCKED_WORDS)
 
-/** True for a blocklisted word or a plain inflection of one (cocks, fucking, shitty, damned). */
+/**
+ * True for a blocked word or a regular inflection or derivation of one: cocks, fucking, shitty, damned,
+ * cockier (cock+ier), nudest (nude+est), moronic (moron+ic), vaginal and vaginae (vagina+l, vagina+e).
+ */
 export function isOffensive(word: string): boolean {
   if (COARSE_STEMS.some((stem) => word.includes(stem))) return true
   for (const suffix of SUFFIXES) {
@@ -50,8 +65,10 @@ export function isOffensive(word: string): boolean {
       return true
     }
     // Dropped silent e: raping -> rape.
-    if ((suffix === 'ing' || suffix === 'ed' || suffix === 'er') && BLOCKED.has(`${stem}e`)) return true
+    if ((suffix === 'ing' || suffix === 'ed' || suffix === 'er' || suffix === 'est') && BLOCKED.has(`${stem}e`)) return true
   }
+  // Latin a-stems: vagina -> vaginal, vaginae.
+  if (/a[le]$/.test(word) && BLOCKED.has(word.slice(0, -1))) return true
   // Consonant+y words inflect through i: pussy -> pussies, pansy -> pansied.
   const ied = /^(.*[^aeiou])i(es|ed|er|ers|est)$/.exec(word)
   if (ied && BLOCKED.has(`${ied[1]}y`)) return true

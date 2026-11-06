@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import fc from 'fast-check'
-import { isOffensive, OFFENSIVE_WORDS } from './blocklist'
+import { BLOCKED_WORDS, isOffensive, LDNOOBW_WORDS, OFFENSIVE_WORDS } from './blocklist'
 import { extractAbbreviations, filterScowlWords, pickSeedCandidates } from './filter'
 import { deriveLetterValues, letterCounts, MAX_LETTER_VALUE } from './letterValues'
 import { LETTER_VALUES, letterValuesFor } from './letterValuesTable'
@@ -23,7 +23,7 @@ const wordSet = new Set(data.words)
 const wordArb = fc.stringMatching(/^[a-z]{2,9}$/)
 
 // v1 is frozen (ADR 0003): any edit to the artifact changes this hash and must be a new version.
-const V1_SHA256 = 'b3dd46d812571bec30e7abf9effbe85e70568a885bd9462c52469cdac292e3da'
+const V1_SHA256 = '45896b9089cbb3f8d4246e26cc12895b94b382d0910bd8e126455df38b5e3674'
 
 describe('the shipped Word List artifact', () => {
   it('is the frozen v1, byte for byte', () => {
@@ -86,7 +86,7 @@ describe('the shipped Word List artifact', () => {
       expect(isOffensive(s)).toBe(false)
     }
     const pool = new Set(list.seedCandidates)
-    for (const bad of OFFENSIVE_WORDS) expect(pool.has(bad)).toBe(false)
+    for (const bad of BLOCKED_WORDS) expect(pool.has(bad)).toBe(false)
   })
 
   it('keeps known slurs, swear words and crude terms out of the Seed Word pool', () => {
@@ -94,7 +94,8 @@ describe('the shipped Word List artifact', () => {
     const offensive =
       'jackass sod sodding slag midget cretin moron spunk booby boobs skank pimp hooker penis vagina anus anal orgasm semen muff ' +
       'dumbass badass bullshit dickhead shithead dipshit fuck shit bitch cunt whore slut twat wank bastard nigger faggot retard ' +
-      'cocks fucking shitty damned pussies pansies'
+      'cocks fucking shitty damned pussies pansies orgy orgies kinky pervert molest vaginal vaginae moronic nudest ' +
+      'cockier jerkier lustier'
     for (const w of offensive.split(' ')) expect(pool.has(w), w).toBe(false)
   })
 
@@ -196,16 +197,17 @@ describe('Seed Word candidates', () => {
   it('never intersect the blocklist, whatever the input', () => {
     fc.assert(
       fc.property(fc.array(wordArb, { maxLength: 40 }), (extra) => {
-        const words = filterScowlWords([...extra, ...OFFENSIVE_WORDS, 'house'])
+        const words = filterScowlWords([...extra, ...BLOCKED_WORDS, 'house'])
         const pool = pickSeedCandidates(words, new Set(words))
-        for (const w of pool) expect(OFFENSIVE_WORDS).not.toContain(w)
+        for (const w of pool) expect(BLOCKED_WORDS).not.toContain(w)
         expect(pool.every((w) => !isOffensive(w))).toBe(true)
       }),
     )
   })
 
   it('excludes plain inflections of blocklisted words', () => {
-    for (const w of ['fucking', 'shitty', 'damned', 'bitches', 'raping', 'bullshit', 'dickhead', 'jackass', 'pussies', 'pansies']) {
+    for (const w of ['fucking', 'shitty', 'damned', 'bitches', 'raping', 'bullshit', 'dickhead', 'jackass', 'pussies', 'pansies',
+      'cockier', 'jerkiest', 'nudest', 'moronic', 'vaginal', 'vaginae']) {
       expect(isOffensive(w)).toBe(true)
     }
     for (const w of ['house', 'class', 'assist', 'hello']) expect(isOffensive(w)).toBe(false)
@@ -217,7 +219,9 @@ describe('the shipped Seed Word pool and inflections', () => {
   function inflections(w: string): string[] {
     const last = w.at(-1) as string
     const out = [w, `${w}s`, `${w}es`, `${w}ed`, `${w}er`, `${w}ers`, `${w}ing`, `${w}y`, `${w}${last}ed`, `${w}${last}ing`, `${w}${last}er`, `${w}${last}y`]
-    if (last === 'e') out.push(`${w.slice(0, -1)}ing`, `${w.slice(0, -1)}ed`, `${w.slice(0, -1)}er`)
+    out.push(`${w}ier`, `${w}iest`, `${w}est`, `${w}ic`, `${w}al`)
+    if (last === 'e') out.push(`${w.slice(0, -1)}ing`, `${w.slice(0, -1)}ed`, `${w.slice(0, -1)}er`, `${w.slice(0, -1)}est`)
+    if (last === 'a') out.push(`${w}l`, `${w}e`)
     if (last === 'y' && !'aeiou'.includes(w.at(-2) ?? 'a')) {
       const base = w.slice(0, -1)
       out.push(`${base}ies`, `${base}ied`, `${base}ier`, `${base}iest`)
@@ -225,9 +229,9 @@ describe('the shipped Seed Word pool and inflections', () => {
     return out
   }
 
-  it('holds no regular inflection of any blocklisted word', () => {
+  it('holds no regular inflection of any blocked word', () => {
     const pool = new Set(list.seedCandidates)
-    for (const bad of OFFENSIVE_WORDS) {
+    for (const bad of BLOCKED_WORDS) {
       for (const form of inflections(bad)) expect(pool.has(form), form).toBe(false)
     }
   })
@@ -258,5 +262,12 @@ describe('letter values', () => {
   it('score the most common letter lowest and the rarest highest', () => {
     expect(LETTER_VALUES.e).toBe(1)
     expect(Math.max(...Object.values(LETTER_VALUES))).toBe(MAX_LETTER_VALUE)
+  })
+})
+
+describe('the blocklist', () => {
+  it('includes every single word from LDNOOBW alongside our own list', () => {
+    expect(LDNOOBW_WORDS.length).toBeGreaterThan(200)
+    for (const w of [...LDNOOBW_WORDS, ...OFFENSIVE_WORDS]) expect(isOffensive(w), w).toBe(true)
   })
 })

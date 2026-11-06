@@ -24,7 +24,7 @@ A value entered into a cell that differs from the solution. Counted, never fatal
 _Avoid_: Strike, life, error
 
 **Statistics**:
-Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached. (Working reading, pending confirmation: a Daily counts as played once its day is opened, and a 3-star solve counts toward all three Par tiers.)
+Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached.
 _Avoid_: Stats, scores, records
 
 ### Daily
@@ -50,7 +50,7 @@ Spending a Play to return the whole Rack to the back of the Tile Run instead of 
 _Avoid_: Exchange, pass
 
 **Seed Word**:
-The word already on the grid when a Lettergrid Daily Puzzle opens, the same for every player that day; it is never a slur or a swear word, though both can be played. Seed Words are drawn only from common words (SCOWL size 35, 3 to 7 letters) in the Word List, so the opening word is familiar to everyone.
+The word already on the grid when a Lettergrid Daily Puzzle opens, the same for every player that day; it is never a slur or a swear word, though both can be played. It is always a common, everyday word, so the opening word is familiar to everyone.
 _Avoid_: Starter word, opening word
 
 **Word List**:
@@ -150,4 +150,5 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 ## Flagged ambiguities
 
 - "Scrabble" was used to mean a second game — resolved: it is **Lettergrid**, an original word-tile game, not a copy of Scrabble.
+- Whether a Lettergrid **Daily Puzzle** counts as played in **Statistics** once opened or only once solved — unresolved.
 - "track daily" was used to mean a daily puzzle, a streak and a calendar — resolved: all three exist, and they are separate terms (**Daily Puzzle**, **Streak**, **Calendar**).

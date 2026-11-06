@@ -41,6 +41,7 @@
     "fast-check": "^4.10.2",
     "globals": "^17.13.0",
     "jsdom": "^26.1.0",
+    "naughty-words": "1.2.0",
     "sql.js": "^1.15.2",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",

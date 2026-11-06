@@ -421,13 +421,13 @@ describe('generator v1 is frozen', () => {
 })
 
 const GOLDEN = {
-  seedWord: 'team',
-  seedStart: { row: 4, col: 1 },
+  seedWord: 'dourest',
+  seedStart: { row: 4, col: 0 },
   seedDirection: 'across',
   rack: 'iofiyty',
   tileRun: 'iofiytyakesryntteiedsuaareom',
   bonuses: '....L2........L2........L2....L3L3L2W2......L2..W2..W2..........L2..W2................W3..L2....L2L2......L2........L2........L2W3L3....W3..W2L3W2L3............L3',
-  par: { solverVersion: 1, greedyScore: 281, tiers: [168, 224, 266] },
+  par: { solverVersion: 1, greedyScore: 287, tiers: [172, 229, 272] },
 }
 
 describe('Word List version schedule (ADR 0003)', () => {
