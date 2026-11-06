@@ -270,3 +270,70 @@ small { display: block; color: var(--muted); font-size: 0.8125rem; }
 }
 .form-message { font-size: 0.9375rem; }
 .form-error { color: var(--danger); }
+
+/* Home tabs */
+.home { justify-content: flex-start; gap: 8px; }
+.tabs { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--card); flex: none; }
+.tab {
+  position: relative; flex: 1; min-height: 44px; border: 0; border-radius: 10px; background: none;
+  font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.tab.selected { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.tab-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+.tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
+
+/* Lettergrid */
+:root {
+  --tile: #fbe6b0; --tile-text: #3b2a05; --tile-edge: #d3ad4f;
+  --bonus-l2: #14b8a6; --bonus-l3: #16a34a; --bonus-w2: #f59e0b; --bonus-w3: #c026d3;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --tile: #5b4a1c; --tile-text: #fdf1cf; --tile-edge: #9a8038; }
+}
+.lg-header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.lg-scoreboard { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lg-score strong { font-size: 1.25rem; }
+.lg-par { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.lg-par li { padding: 2px 8px; border-radius: 999px; background: var(--card); color: var(--muted); font-size: 0.8125rem; font-weight: 600; }
+.lg-par li.reached { background: var(--accent); color: var(--accent-text); }
+.lg-board {
+  --size: min(100cqw, 100cqh);
+  width: var(--size); height: var(--size);
+  display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(9, 1fr); gap: 2px; padding: 2px;
+  background: var(--grid-thin); border-radius: 6px; container-type: size;
+}
+.lg-cell {
+  position: relative; display: grid; place-items: center; padding: 0; min-width: 0; min-height: 0; border: 0; border-radius: 4px;
+  background: var(--surface); color: var(--tile-text);
+}
+.lg-cell.bonus-L2 { background: color-mix(in srgb, var(--surface), var(--bonus-l2) 38%); }
+.lg-cell.bonus-L3 { background: color-mix(in srgb, var(--surface), var(--bonus-l3) 45%); }
+.lg-cell.bonus-W2 { background: color-mix(in srgb, var(--surface), var(--bonus-w2) 50%); }
+.lg-cell.bonus-W3 { background: color-mix(in srgb, var(--surface), var(--bonus-w3) 42%); }
+.lg-cell.tile { background: var(--tile); box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.lg-cell.seed { box-shadow: inset 0 0 0 2px var(--accent); }
+.lg-cell.staged { box-shadow: inset 0 0 0 3px var(--accent); }
+.lg-cell.cursor:not(.tile) { box-shadow: inset 0 0 0 3px var(--accent); }
+.lg-cell:focus-visible { outline-offset: -3px; z-index: 1; }
+.lg-bonus { font-size: calc(var(--size) / 9 * 0.25); font-weight: 700; color: var(--text); opacity: 0.75; }
+.lg-letter { font-size: calc(var(--size) / 9 * 0.52); font-weight: 700; line-height: 1; }
+.lg-value { position: absolute; right: 12%; bottom: 8%; font-size: calc(var(--size) / 9 * 0.22); font-weight: 600; line-height: 1; }
+.lg-message { min-height: 1.4em; text-align: center; font-size: 0.9375rem; }
+.rack { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.rack-tile {
+  position: relative; display: grid; place-items: center; aspect-ratio: 1; max-height: 64px; width: 100%; padding: 0;
+  border: 0; border-radius: 8px; background: var(--tile); color: var(--tile-text); box-shadow: inset 0 0 0 1px var(--tile-edge);
+}
+.rack-tile .lg-letter { font-size: 1.625rem; }
+.rack-tile .lg-value { font-size: 0.75rem; }
+.rack-tile.selected { box-shadow: inset 0 0 0 3px var(--accent); transform: translateY(-3px); }
+.rack-tile.used { opacity: 0.35; }
+.rack-tile:disabled { opacity: 0.5; }
+.lg-actions .btn { padding: 0 16px; }
+.lg-loading { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; }
+.lg-stars { font-size: 2rem; letter-spacing: 4px; }
+.lg-stars .on { color: #eab308; }
+.lg-stars .off { color: var(--grid-thin); }
+.cal-badge { position: absolute; bottom: 1px; left: 0; right: 0; font-size: 0.5rem; line-height: 1; letter-spacing: -1px; }
+.cal-day.onDay .cal-badge { color: var(--accent-text); }
+.cal-day:has(.cal-badge) { line-height: 1; }

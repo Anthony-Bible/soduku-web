@@ -1,8 +1,17 @@
 # Sudoku
 
-A single-player Sudoku game that runs in the browser and installs as a PWA. It replaces the earlier iPhone and Android apps. This glossary pins down the words used for play, progress and rewards.
+A single-player puzzle app that runs in the browser and installs as a PWA. The app is called Sudoku and holds two games, Sudoku and Lettergrid. It replaces the earlier iPhone and Android Sudoku apps. This glossary pins down the words used for play, progress and rewards.
 
 ## Language
+
+### Games
+
+**Sudoku**:
+The number-placement game the app began with; every term below is Sudoku's unless it names Lettergrid.
+
+**Lettergrid**:
+An original single-player word-tile game played on a grid against the day's tiles, built for the app and not a copy of any existing word game.
+_Avoid_: Scrabble, word game
 
 ### Play
 
@@ -15,14 +24,42 @@ A value entered into a cell that differs from the solution. Counted, never fatal
 _Avoid_: Strike, life, error
 
 **Statistics**:
-For each difficulty, the Games played and won and the best winning time, counted across every device of an Account; they are never reset.
+Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached.
 _Avoid_: Stats, scores, records
 
 ### Daily
 
 **Daily Puzzle**:
-The one puzzle assigned to a calendar day, identical every time it is opened; its difficulty is set by weekday (Mon–Tue Easy, Wed–Thu Medium, Fri–Sat Hard, Sun Expert).
+The one puzzle a game assigns to a calendar day, identical every time it is opened; Sudoku's difficulty is set by weekday (Mon–Tue Easy, Wed–Thu Medium, Fri–Sat Hard, Sun Expert). A Lettergrid Daily Puzzle is solved once all of its plays are made, whatever the score.
 _Avoid_: Puzzle of the day, daily challenge
+
+**Tile Run**:
+The fixed sequence of letters a Lettergrid Daily Puzzle deals from, in the same order for every player; the Rack refills from it in order.
+_Avoid_: Bag, tile pool, draw pile
+
+**Rack**:
+The letters a player holds and may place, refilled from the Tile Run after each Play.
+_Avoid_: Hand, tray
+
+**Play**:
+One placement of letters from the Rack onto the grid, or one Swap; a Lettergrid Daily Puzzle allows a fixed number of them.
+_Avoid_: Turn, move
+
+**Swap**:
+Spending a Play to return the whole Rack to the back of the Tile Run instead of placing letters.
+_Avoid_: Exchange, pass
+
+**Seed Word**:
+The word already on the grid when a Lettergrid Daily Puzzle opens, the same for every player that day; it is never a slur or a swear word, though both can be played. It is always a common, everyday word, so the opening word is familiar to everyone.
+_Avoid_: Starter word, opening word
+
+**Word List**:
+The words Lettergrid accepts, in both American and British spellings; each Lettergrid Daily Puzzle, and its Par, is always judged against the Word List it was published with.
+_Avoid_: Dictionary, lexicon
+
+**Par**:
+The score targets published with each Lettergrid Daily Puzzle, worth one to three stars; reaching one never decides whether the puzzle counts as solved.
+_Avoid_: Target, goal, rating
 
 **On-Day Solve**:
 Solving a Daily Puzzle that was first opened on the calendar day it belongs to, however late the solve lands.
@@ -33,7 +70,7 @@ Solving a past day's Daily Puzzle that was first opened after that day ended.
 _Avoid_: Late solve, backfill
 
 **Streak**:
-The number of consecutive calendar days, ending today or yesterday, that each have an On-Day Solve.
+For one game, the number of consecutive calendar days, ending today or yesterday, that each have an On-Day Solve of that game's Daily Puzzle.
 _Avoid_: Run, chain
 
 **Longest Streak**:
@@ -88,10 +125,14 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 
 ## Relationships
 
-- Each calendar day has exactly one **Daily Puzzle**
+- Each calendar day has exactly one **Daily Puzzle** per game
+- **Sudoku** and **Lettergrid** each have their own **Streak**, **Longest Streak** and **Calendar**; a solve in one never counts toward the other
+- **Achievements**, including **Perfect Week** and **Full Month**, count only **Sudoku**; **Lettergrid** has none
 - A **Streak** counts only **On-Day Solves**; a **Catch-Up Solve** never extends or repairs one
 - Ordinary **Games** never affect the **Streak** or the **Calendar**
-- A **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
+- A Sudoku **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
+- A **Lettergrid** **Daily Puzzle** is one attempt: if it is solved more than once, such as on two devices before they sync, only the first solve finished counts for its score, **Par**, **Calendar** and **Statistics**
+- **Lettergrid** has no ordinary **Games**: every Lettergrid **Game** is a **Daily Puzzle**, played on its day or as a **Catch-Up Solve**
 - The **Calendar** distinguishes **On-Day Solves** from **Catch-Up Solves**
 - Skill and Milestone **Achievements** count any solved **Game**, ordinary or **Daily Puzzle**; Streak and Calendar **Achievements** count only **Daily Puzzles**
 - An **Account** can only be created for an email on the **Invite List**; the first **Sign-in Email** it uses creates it, so there is no separate sign-up
@@ -108,4 +149,6 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 
 ## Flagged ambiguities
 
+- "Scrabble" was used to mean a second game — resolved: it is **Lettergrid**, an original word-tile game, not a copy of Scrabble.
+- Whether a Lettergrid **Daily Puzzle** counts as played in **Statistics** once opened or only once solved — unresolved.
 - "track daily" was used to mean a daily puzzle, a streak and a calendar — resolved: all three exist, and they are separate terms (**Daily Puzzle**, **Streak**, **Calendar**).

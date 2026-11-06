@@ -2,22 +2,12 @@ import { useEffect, useState } from 'react'
 import { dailyDifficulty, displayName, longTitle, solveFor } from '../core'
 import { useApp } from '../app/AppContext'
 import { ConfirmDialog } from './ConfirmDialog'
+import { AccountButton } from './AccountButton'
+import { HomeTabs } from './HomeTabs'
 import { Icon } from './Icon'
+import { LettergridHome } from './LettergridHome'
 import { InstallBanner } from './Install'
 import { accessibleElapsed, formatElapsed } from './format'
-
-function AccountButton() {
-  const { controller, sync } = useApp()
-  if (!controller.sync.available) return null
-  const email = sync.account?.email
-  const label = email ? `Account, signed in as ${email}${sync.error ? ', last sync failed' : ''}` : 'Account, signed out'
-  return (
-    <button type="button" className="account-btn" aria-label={label} onClick={() => controller.openSheet('account')}>
-      {email ? <span aria-hidden="true">{email.charAt(0).toUpperCase()}</span> : <Icon name="person" size={20} />}
-      {email && sync.error && <span className="account-dot" aria-hidden="true" />}
-    </button>
-  )
-}
 
 function DailyCard() {
   const { controller, today } = useApp()
@@ -54,7 +44,7 @@ function DailyCard() {
   )
 }
 
-export function Home({ onDialogChange }: { onDialogChange?: (open: boolean) => void } = {}) {
+function SudokuHome({ onDialogChange }: { onDialogChange?: (open: boolean) => void }) {
   const { controller } = useApp()
   const saved = controller.profile.savedGame()
   const [confirmAbandon, setConfirmAbandon] = useState(false)
@@ -63,14 +53,7 @@ export function Home({ onDialogChange }: { onDialogChange?: (open: boolean) => v
     return () => onDialogChange?.(false)
   }, [confirmAbandon, onDialogChange])
   return (
-    <main className="home">
-      <div className="hero">
-        <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
-          <rect x="4" y="4" width="56" height="56" rx="10" fill="currentColor" />
-          <path d="M23 4v56M41 4v56M4 23h56M4 41h56" stroke="var(--bg)" strokeWidth="2.5" />
-        </svg>
-        <h1>Sudoku</h1>
-      </div>
+    <>
       <div className="home-actions">
         <DailyCard />
         {saved && (
@@ -108,6 +91,33 @@ export function Home({ onDialogChange }: { onDialogChange?: (open: boolean) => v
           }}
         />
       )}
+    </>
+  )
+}
+
+export function Home({ onDialogChange }: { onDialogChange?: (open: boolean) => void } = {}) {
+  const { tab } = useApp()
+  return (
+    <main className="home">
+      <HomeTabs>
+        <div className="hero">
+          {tab === 'sudoku' ? (
+            <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
+              <rect x="4" y="4" width="56" height="56" rx="10" fill="currentColor" />
+              <path d="M23 4v56M41 4v56M4 23h56M4 41h56" stroke="var(--bg)" strokeWidth="2.5" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
+              <rect x="4" y="4" width="26" height="26" rx="6" fill="currentColor" />
+              <rect x="34" y="4" width="26" height="26" rx="6" fill="currentColor" opacity="0.55" />
+              <rect x="4" y="34" width="26" height="26" rx="6" fill="currentColor" opacity="0.55" />
+              <rect x="34" y="34" width="26" height="26" rx="6" fill="currentColor" />
+            </svg>
+          )}
+          <h1>Sudoku</h1>
+        </div>
+        {tab === 'sudoku' ? <SudokuHome onDialogChange={onDialogChange} /> : <LettergridHome />}
+      </HomeTabs>
     </main>
   )
 }
