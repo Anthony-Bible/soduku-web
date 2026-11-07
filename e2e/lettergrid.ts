@@ -3,7 +3,7 @@ import { expect, type Page } from '@playwright/test'
 import { dayFromDate, type CalendarDay } from '../src/core'
 import {
   lettergridDaily,
-  newDailyGame,
+  newGame,
   parseWordList,
   solveGreedy,
   starsFor,
@@ -33,7 +33,7 @@ export interface DailyScript {
  */
 export function scriptFor(day: CalendarDay): DailyScript {
   const daily = lettergridDaily(day, wordList())
-  const solved = solveGreedy(newDailyGame(daily), wordList())
+  const solved = solveGreedy(newGame(daily), wordList())
   return { plays: solved.plays, score: solved.score, stars: starsFor(solved.score, daily.par) }
 }
 

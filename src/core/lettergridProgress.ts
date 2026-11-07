@@ -1,9 +1,20 @@
 import type { CalendarDay } from './calendarDay'
-import type { DailyLog, SolveKind } from './dailyLog'
-import { CELL_COUNT, PLAYS_PER_DAILY, RACK_SIZE, TILE_RUN_LENGTH } from './lettergrid/grid'
-import type { LettergridState } from './lettergrid/game'
+import { buildDailyLog, recordOpen, type DailyLog } from './dailyLog'
+import { CELL_COUNT, GRID_SIZE, PLAYS_PER_DAILY, RACK_SIZE, TILE_RUN_LENGTH } from './lettergrid/grid'
+import type { LettergridResult, LettergridState } from './lettergrid/game'
 import type { LettergridStatistics } from './statistics'
-import { mergeSlots, stableStringify, unionMap } from './stable'
+import {
+  clampSlots,
+  dailySlotDay,
+  dailySlotKey,
+  liveSlotIn,
+  mergeSlots,
+  newestSlotWrite,
+  pruneSlots,
+  stableStringify,
+  unionMap,
+  writeSlot,
+} from './stable'
 import { isInt, isNonNegInt, isObj, isSafeId } from './validate'
 
 // Lettergrid's share of the synced document (ADR 0002, 0003). Like the Sudoku parts it is stored in a form
@@ -14,16 +25,11 @@ export const MAX_LETTERGRID_SOLVES = 50_000
 export const MAX_LETTERGRID_SLOTS = 5_000
 
 /** A finished Lettergrid Daily. Every one is kept; only the earliest finished per day counts. */
-export interface LettergridSolve {
+export interface LettergridSolve extends LettergridResult {
   readonly gameId: string
   readonly day: CalendarDay
   /** Epoch milliseconds when the last Play was made. */
   readonly finishedAt: number
-  readonly score: number
-  /** Par tiers reached, 0 to 3, fixed by the Par the Daily was played with. */
-  readonly stars: 0 | 1 | 2 | 3
-  /** Score of each Play in order; null marks a Swap (the Share text shows it as a loop arrow). */
-  readonly plays: readonly (number | null)[]
 }
 
 /** A Lettergrid Game in progress. It carries its own grid, Tile Run, Par and Word List version. */
@@ -55,8 +61,6 @@ export interface LettergridProgress {
 
 export const emptyLettergridProgress = (): LettergridProgress => ({ firstOpened: {}, solves: {}, slots: {}, clock: 0 })
 
-export const lettergridSlotKey = (day: CalendarDay): string => `daily.${day}`
-
 // MARK: Merge
 
 /**
@@ -64,6 +68,8 @@ export const lettergridSlotKey = (day: CalendarDay): string => `daily.${day}`
  * pick is the same in any order. (A Game ID belongs to one day; records that disagree on it are corrupt.)
  */
 function pickSolve(a: LettergridSolve, b: LettergridSolve): LettergridSolve {
+  // After a sync both sides usually hold the same record; skip the content tie-break for it.
+  if (a === b) return a
   return a.finishedAt !== b.finishedAt ? (a.finishedAt < b.finishedAt ? a : b) : stableStringify(a) <= stableStringify(b) ? a : b
 }
 
@@ -77,31 +83,18 @@ export function mergeLettergridProgress(a: LettergridProgress, b: LettergridProg
 }
 
 /** Newest slot write or recorded clock. Only Lettergrid slots are pruned against it. */
-export function lettergridClock(p: LettergridProgress): number {
-  let t = p.clock
-  for (const s of Object.values(p.slots)) if (s.updatedAt > t) t = s.updatedAt
-  return t
-}
-
-const slotDay = (key: string): number => Number(key.slice(6))
+export const lettergridClock = (p: LettergridProgress): number => newestSlotWrite(p.slots, p.clock)
 
 /** Drops slots that can no longer matter: a solved day never reopens, and a stale slot is forgotten. */
 export function normalizeLettergridProgress(p: LettergridProgress, retentionMs: number): LettergridProgress {
   const clock = lettergridClock(p)
   const cutoff = clock - retentionMs
   const solvedDays = new Set(Object.values(p.solves).map((s) => s.day))
-  const slots: Record<string, LettergridSlot> = {}
-  for (const [key, slot] of Object.entries(p.slots)) {
-    if (slot.updatedAt < cutoff || solvedDays.has(slotDay(key))) continue
-    slots[key] = slot
-  }
-  return { ...p, slots, clock }
+  return { ...p, slots: pruneSlots(p.slots, cutoff, (day) => solvedDays.has(day)), clock }
 }
 
 export function clampLettergrid(p: LettergridProgress, maxTime: number): LettergridProgress {
-  const slots: Record<string, LettergridSlot> = {}
-  for (const [key, slot] of Object.entries(p.slots)) slots[key] = slot.updatedAt > maxTime ? { ...slot, updatedAt: maxTime } : slot
-  return { ...p, slots, clock: Math.min(p.clock, maxTime) }
+  return { ...p, slots: clampSlots(p.slots, maxTime), clock: Math.min(p.clock, maxTime) }
 }
 
 // MARK: Derived data
@@ -119,46 +112,30 @@ export function countedSolves(p: LettergridProgress): Map<CalendarDay, Lettergri
   return counted
 }
 
-export const countedSolveFor = (p: LettergridProgress, day: CalendarDay): LettergridSolve | null => countedSolves(p).get(day) ?? null
-
 /** Lettergrid's own Daily log, shaped like Sudoku's so Streak, Longest Streak and the Calendar functions apply. */
-export function deriveLettergridLog(p: LettergridProgress): DailyLog {
-  const solves: Record<number, SolveKind> = {}
-  for (const day of countedSolves(p).keys()) {
-    const opened = p.firstOpened[day]
-    solves[day] = opened !== undefined && opened <= day ? 'onDay' : 'catchUp'
-  }
-  const firstOpened: Record<number, number> = {}
-  for (const [k, d] of Object.entries(p.firstOpened)) firstOpened[Number(k)] = d
-  return { firstOpened, solves }
-}
+export const deriveLettergridLog = (p: LettergridProgress, counted = countedSolves(p)): DailyLog => buildDailyLog(p.firstOpened, counted.keys())
 
-export function deriveLettergridStatistics(p: LettergridProgress): LettergridStatistics {
+export function deriveLettergridStatistics(p: LettergridProgress, counted = countedSolves(p)): LettergridStatistics {
   let bestScore: number | null = null
   const parReached: [number, number, number] = [0, 0, 0]
-  for (const s of countedSolves(p).values()) {
+  for (const s of counted.values()) {
     bestScore = bestScore === null ? s.score : Math.max(bestScore, s.score)
     for (let i = 0; i < s.stars; i++) parReached[i]++
   }
-  return { dailiesPlayed: Object.keys(p.firstOpened).length, bestScore, parReached }
+  return { dailiesPlayed: counted.size, bestScore, parReached }
 }
 
 /** Whether a Game has a recorded solve. Solves are permanent, so this only ever becomes true. */
 export const isLettergridFinished = (p: LettergridProgress, gameId: string): boolean => Object.hasOwn(p.solves, gameId)
 
 /** The Game that can be continued from a day's slot. A slot whose Game is already solved counts as cleared. */
-export function liveLettergridSlot(p: LettergridProgress, day: CalendarDay): (LettergridSlot & { game: LettergridSaved }) | null {
-  const s = p.slots[lettergridSlotKey(day)]
-  return s && s.game !== null && !isLettergridFinished(p, s.game.id) ? (s as LettergridSlot & { game: LettergridSaved }) : null
-}
+export const liveLettergridSlot = (p: LettergridProgress, day: CalendarDay): (LettergridSlot & { game: LettergridSaved }) | null =>
+  liveSlotIn(p.slots, dailySlotKey(day), (id) => isLettergridFinished(p, id))
 
 // MARK: Local edits (each returns new progress)
 
 /** Records the first opening of a day. A future day is ignored; the earliest opening is kept. */
-export function openLettergridDay(p: LettergridProgress, day: CalendarDay, today: CalendarDay): LettergridProgress {
-  if (day > today || p.firstOpened[day] !== undefined) return p
-  return { ...p, firstOpened: { ...p.firstOpened, [day]: today } }
-}
+export const openLettergridDay = (p: LettergridProgress, day: CalendarDay, today: CalendarDay): LettergridProgress => recordOpen(p, day, today)
 
 /** Keeps a solve. Several can exist for a day; `countedSolves` picks the one that counts. */
 export function addLettergridSolve(p: LettergridProgress, s: LettergridSolve): LettergridProgress {
@@ -168,11 +145,8 @@ export function addLettergridSolve(p: LettergridProgress, s: LettergridSolve): L
 
 /** Writes a day's slot, unless it holds something newer. `null` leaves a cleared marker. A solved Game never comes back. */
 export function setLettergridSlot(p: LettergridProgress, day: CalendarDay, game: LettergridSaved | null, updatedAt: number): LettergridProgress {
-  const key = lettergridSlotKey(day)
-  const existing = p.slots[key]
-  if (existing && existing.updatedAt > updatedAt) return p
-  if (game !== null && isLettergridFinished(p, game.id)) return p
-  return { ...p, slots: { ...p.slots, [key]: { updatedAt, game } } }
+  const slots = writeSlot(p.slots, dailySlotKey(day), { updatedAt, game }, (id) => isLettergridFinished(p, id))
+  return slots === p.slots ? p : { ...p, slots }
 }
 
 // MARK: Validation
@@ -183,7 +157,7 @@ const isLetter = (v: unknown): v is string => typeof v === 'string' && /^[a-z]$/
 const letters = (v: unknown, max: number): v is string[] => Array.isArray(v) && v.length <= max && v.every(isLetter)
 
 function isTile(t: unknown): boolean {
-  return isObj(t) && isNonNegInt(t.row) && t.row < 9 && isNonNegInt(t.col) && t.col < 9 && isLetter(t.letter)
+  return isObj(t) && isNonNegInt(t.row) && t.row < GRID_SIZE && isNonNegInt(t.col) && t.col < GRID_SIZE && isLetter(t.letter)
 }
 
 function isPlay(p: unknown): boolean {
@@ -205,7 +179,7 @@ export function isLettergridState(v: unknown): v is LettergridState {
     isNonNegInt(v.wordListVersion) &&
     Array.isArray(v.grid) && v.grid.length === CELL_COUNT && v.grid.every((c) => c === null || isLetter(c)) &&
     Array.isArray(v.bonuses) && v.bonuses.length === CELL_COUNT && v.bonuses.every((b) => b === null || (typeof b === 'string' && BONUSES.has(b))) &&
-    Array.isArray(v.seedCells) && v.seedCells.length <= 9 && v.seedCells.every((c) => isNonNegInt(c) && c < CELL_COUNT) &&
+    Array.isArray(v.seedCells) && v.seedCells.length <= GRID_SIZE && v.seedCells.every((c) => isNonNegInt(c) && c < CELL_COUNT) &&
     letters(v.tileRun, TILE_RUN_LENGTH) &&
     letters(v.queue, TILE_RUN_LENGTH) &&
     letters(v.rack, RACK_SIZE) &&
@@ -263,7 +237,7 @@ export function parseLettergridProgress(raw: unknown): LettergridProgress | null
   }
   const slots: Record<string, LettergridSlot> = {}
   for (const [k, s] of Object.entries(raw.slots)) {
-    if (!k.startsWith('daily.') || !isInt(Number(k.slice(6))) || !isObj(s) || !finite(s.updatedAt)) return null
+    if (!isInt(dailySlotDay(k)) || !isObj(s) || !finite(s.updatedAt)) return null
     const game = s.game === null ? null : parseSaved(s.game)
     if (s.game !== null && !game) return null
     slots[k] = { updatedAt: s.updatedAt, game }

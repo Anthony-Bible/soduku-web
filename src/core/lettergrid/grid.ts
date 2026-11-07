@@ -53,3 +53,15 @@ export function lineCells(start: Pos, dir: Direction, length: number): number[] 
     dir === 'across' ? cellIndex(start.row, start.col + k) : cellIndex(start.row + k, start.col),
   )
 }
+
+/** The up to four cells sharing an edge with `idx`. */
+export function neighbours(idx: number): number[] {
+  const r = rowOf(idx)
+  const c = colOf(idx)
+  const out: number[] = []
+  if (r > 0) out.push(cellIndex(r - 1, c))
+  if (r < GRID_SIZE - 1) out.push(cellIndex(r + 1, c))
+  if (c > 0) out.push(cellIndex(r, c - 1))
+  if (c < GRID_SIZE - 1) out.push(cellIndex(r, c + 1))
+  return out
+}

@@ -1,10 +1,9 @@
 import {
   ALL_TILES_BONUS,
   cellIndex,
-  colOf,
   GRID_SIZE,
+  neighbours,
   RACK_SIZE,
-  rowOf,
   runOf,
   type Bonus,
   type Cell,
@@ -122,13 +121,3 @@ export function evaluatePlay(
   return { ok: true, words, score, usedAllTiles }
 }
 
-function neighbours(idx: number): number[] {
-  const r = rowOf(idx)
-  const c = colOf(idx)
-  const out: number[] = []
-  if (r > 0) out.push(cellIndex(r - 1, c))
-  if (r < GRID_SIZE - 1) out.push(cellIndex(r + 1, c))
-  if (c > 0) out.push(cellIndex(r, c - 1))
-  if (c < GRID_SIZE - 1) out.push(cellIndex(r, c + 1))
-  return out
-}

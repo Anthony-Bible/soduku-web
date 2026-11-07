@@ -7,6 +7,7 @@ import { HomeTabs } from './HomeTabs'
 import { Icon } from './Icon'
 import { LettergridHome } from './LettergridHome'
 import { InstallBanner } from './Install'
+import { StreakBadge } from './Streak'
 import { accessibleElapsed, formatElapsed } from './format'
 
 function DailyCard() {
@@ -25,10 +26,7 @@ function DailyCard() {
           </p>
         </div>
         <div className="daily-badges">
-        <span className={`streak${streak > 0 ? ' active' : ''}`}>
-          <Icon name="flame" fill={streak > 0} /> <span className="tabular" aria-hidden="true">{streak}</span>
-          <span className="sr-only">{`Streak ${streak} ${streak === 1 ? 'day' : 'days'}`}</span>
-        </span>
+        <StreakBadge streak={streak} />
         <AccountButton />
         </div>
       </div>

@@ -1,10 +1,8 @@
 import { SeededRandom } from '../random'
 import { TILE_RUN_LENGTH } from './grid'
-
 import { TILE_WEIGHTS_V1 } from './tileWeightsV1'
 
-/** Generator v1 draws letters by weights derived from Word List v1 letter frequency (tileWeightsV1.ts). */
-export { TILE_WEIGHTS_V1 }
+// Generator v1 draws letters by weights derived from Word List v1 letter frequency (tileWeightsV1.ts).
 const MAX_COPIES_V1 = 4
 const MIN_VOWELS_V1 = 9
 const MAX_VOWELS_V1 = 13

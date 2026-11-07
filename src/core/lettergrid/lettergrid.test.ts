@@ -26,13 +26,15 @@ import {
   emptyGrid,
   type Bonus,
 } from './grid'
-import { LETTER_VALUES } from './letterValuesTable'
+import { letterValuesFor } from './letterValuesTable'
 import { parFromGreedy, starsFor } from './par'
 import { bestPlay, solveGreedy } from './solver'
 import { generateTileRun } from './tileRun'
 import { deriveTileWeights } from './letterValues'
 import { TILE_WEIGHTS_V1 } from './tileWeightsV1'
 import { CURRENT_WORD_LIST_VERSION, createWordList, parseWordList, wordListPath } from './wordList'
+
+const LETTER_VALUES = letterValuesFor(CURRENT_WORD_LIST_VERSION)
 
 // Pinned to v1, not CURRENT_WORD_LIST_VERSION: every day these tests generate is published with v1.
 const words = parseWordList(readFileSync(resolve(__dirname, '../../../public', wordListPath(1)), 'utf8'))

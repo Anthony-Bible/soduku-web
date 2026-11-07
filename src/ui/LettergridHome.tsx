@@ -3,6 +3,7 @@ import { useApp } from '../app/AppContext'
 import { AccountButton } from './AccountButton'
 import { starsText, starsWords } from './format'
 import { Icon } from './Icon'
+import { StreakBadge } from './Streak'
 
 function DailyCard() {
   const { controller, today } = useApp()
@@ -18,10 +19,7 @@ function DailyCard() {
           <p className="muted">{longTitle(today)}</p>
         </div>
         <div className="daily-badges">
-          <span className={`streak${streak > 0 ? ' active' : ''}`}>
-            <Icon name="flame" fill={streak > 0} /> <span className="tabular" aria-hidden="true">{streak}</span>
-            <span className="sr-only">{`Streak ${streak} ${streak === 1 ? 'day' : 'days'}`}</span>
-          </span>
+          <StreakBadge streak={streak} />
           <AccountButton />
         </div>
       </div>

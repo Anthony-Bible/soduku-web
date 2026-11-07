@@ -1,6 +1,6 @@
 import { applyAction, isFinished, scoreOf, type LettergridState, type PlayRecord } from './game'
 import { evaluatePlay } from './evaluate'
-import { cellIndex, colOf, GRID_SIZE, rowOf, runOf, type Cell, type Direction, type PlacedTile } from './grid'
+import { colOf, GRID_SIZE, lineCells, neighbours, rowOf, runOf, type Cell, type Direction, type PlacedTile } from './grid'
 import { letterValuesFor } from './letterValuesTable'
 import type { WordList } from './wordList'
 
@@ -10,6 +10,7 @@ export interface BestPlay {
 }
 
 const A = 97
+const ALL_LETTERS: readonly number[] = Array.from({ length: 26 }, (_, l) => l)
 
 /** Lowest index in [lo, hi) whose letter at `depth` is >= `code` (words shorter than depth sort first). */
 function lowerBound(words: readonly string[], lo: number, hi: number, depth: number, code: number): number {
@@ -61,18 +62,8 @@ export function bestPlay(state: LettergridState, words: WordList): BestPlay | nu
 
   for (const dir of ['across', 'down'] as Direction[]) {
     for (let line = 0; line < GRID_SIZE; line++) {
-      const cells = Array.from({ length: GRID_SIZE }, (_, k) =>
-        dir === 'across' ? cellIndex(line, k) : cellIndex(k, line),
-      )
-      const anchored = cells.some(
-        (i) =>
-          filled(i) ||
-          (rowOf(i) > 0 && filled(i - GRID_SIZE)) ||
-          (rowOf(i) < GRID_SIZE - 1 && filled(i + GRID_SIZE)) ||
-          (colOf(i) > 0 && filled(i - 1)) ||
-          (colOf(i) < GRID_SIZE - 1 && filled(i + 1)),
-      )
-      if (!anchored) continue
+      const cells = lineCells(dir === 'across' ? { row: line, col: 0 } : { row: 0, col: line }, dir, GRID_SIZE)
+      if (!cells.some((i) => filled(i) || neighbours(i).some(filled))) continue
 
       const walk = (pos: number, lo: number, hi: number, depth: number): void => {
         const open = pos === GRID_SIZE || !filled(cells[pos])
@@ -87,7 +78,7 @@ export function bestPlay(state: LettergridState, words: WordList): BestPlay | nu
         }
         if (pos === GRID_SIZE) return
         const idx = cells[pos]
-        const letters = filled(idx) ? [(grid[idx] as string).charCodeAt(0) - A] : [...Array(26).keys()]
+        const letters = filled(idx) ? [(grid[idx] as string).charCodeAt(0) - A] : ALL_LETTERS
         for (const l of letters) {
           const isNew = !filled(idx)
           if (isNew && (rackCounts[l] === 0 || crossOk[dir][idx * 26 + l] === 0)) continue

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import {
-  currentStreak, dailyResult, displayName, longTitle, longestStreak, solveFor, solvedCount,
+  dailyResult, displayName, longTitle, solveFor,
   type CalendarDay, type SolveKind, type WinResult,
 } from '../core'
 import { useApp } from '../app/AppContext'
 import { CalendarMonth } from './CalendarMonth'
-import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { StreakSummary } from './Streak'
 import { formatElapsed } from './format'
 import { useShare } from './useShare'
 
@@ -53,11 +53,7 @@ export function CalendarSheet() {
 
   return (
     <Sheet title="Calendar" onClose={() => controller.openSheet(null)}>
-      <div className="summary">
-        <div><Icon name="flame" fill /><strong className="tabular">{currentStreak(dailyLog, today)}</strong><small>Streak</small></div>
-        <div><Icon name="trophy" /><strong className="tabular">{longestStreak(dailyLog)}</strong><small>Longest Streak</small></div>
-        <div><Icon name="check" /><strong className="tabular">{solvedCount(dailyLog)}</strong><small>Solved</small></div>
-      </div>
+      <StreakSummary log={dailyLog} today={today} />
       <CalendarMonth
         log={dailyLog}
         today={today}

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { dayFromYMD } from './calendarDay'
 import { generate } from './generator'
-import { lettergridDaily, newDailyGame } from './lettergrid/daily'
+import { lettergridDaily } from './lettergrid/daily'
 import { bestPlay } from './lettergrid/solver'
 import { CURRENT_WORD_LIST_VERSION, parseWordList, wordListPath } from './lettergrid/wordList'
 import { newGame as newSudoku } from './gameState'
@@ -165,6 +165,16 @@ describe('Lettergrid progress merges like the rest of the document', () => {
       }),
     ))
 
+  test('a Daily counts as played only once it is solved, however often days are opened', () =>
+    fc.assert(
+      fc.property(fc.uniqueArray(fc.integer({ min: 0, max: 500 }), { maxLength: 20 }), fc.uniqueArray(fc.integer({ min: 0, max: 500 }), { maxLength: 20 }), (opened, solved) => {
+        let p = emptyLettergridProgress()
+        for (const day of opened) p = openLettergridDay(p, day, 1000)
+        for (const day of solved) p = addLettergridSolve(p, { gameId: `g${day}`, day, finishedAt: day, score: 1, stars: 0, plays: [1] })
+        expect(deriveLettergridStatistics(p).dailiesPlayed).toBe(solved.length)
+      }),
+    ))
+
   test('a later solve of a day never changes its score, Par stars or the Statistics', () => {
     const early: LettergridSolve = { gameId: 'z', day: 100, finishedAt: 1, score: 50, stars: 1, plays: [50] }
     const late: LettergridSolve = { gameId: 'a', day: 100, finishedAt: 2, score: 200, stars: 3, plays: [200] }
@@ -225,7 +235,7 @@ describe('Lettergrid never touches Sudoku', () => {
     const lg = withLetter(openLettergridDay(emptyLettergridProgress(), 100, 100)).lettergrid
     const noisy = normalizeDoc({ ...sudokuDoc(), lettergrid: lg })
     expect(deriveLettergridLog(noisy.lettergrid)).toEqual(deriveLettergridLog(lg))
-    expect(deriveLettergridStatistics(noisy.lettergrid)).toEqual({ dailiesPlayed: 1, bestScore: null, parReached: [0, 0, 0] })
+    expect(deriveLettergridStatistics(noisy.lettergrid)).toEqual({ dailiesPlayed: 0, bestScore: null, parReached: [0, 0, 0] })
     expect(currentStreak(deriveLettergridLog(noisy.lettergrid), 102)).toBe(0)
   })
 
@@ -285,7 +295,7 @@ describe('persistence and migration', () => {
 describe('real Lettergrid games', () => {
   test('a Daily with real Plays and a Swap round-trips through the sync document', () => {
     const words = parseWordList(readFileSync(resolve(__dirname, '../../public', wordListPath(CURRENT_WORD_LIST_VERSION)), 'utf8'))
-    let state = newDailyGame(lettergridDaily(dayFromYMD(2026, 11, 5), words))
+    let state = newGame(lettergridDaily(dayFromYMD(2026, 11, 5), words))
     for (let i = 0; i < 4; i++) {
       const best = bestPlay(state, words)
       const r = applyAction(state, best ? { type: 'play', tiles: best.tiles } : { type: 'swap' }, words)

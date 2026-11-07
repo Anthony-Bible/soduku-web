@@ -14,9 +14,21 @@ export interface DailyLog {
 export const emptyDailyLog = (): DailyLog => ({ firstOpened: {}, solves: {} })
 
 /** Records the first time a day's Daily Puzzle is opened. A future day is ignored. */
-export function recordOpen(log: DailyLog, day: CalendarDay, today: CalendarDay): DailyLog {
+export function recordOpen<T extends { readonly firstOpened: Readonly<Record<number, number>> }>(log: T, day: CalendarDay, today: CalendarDay): T {
   if (day > today || log.firstOpened[day] !== undefined) return log
   return { ...log, firstOpened: { ...log.firstOpened, [day]: today } }
+}
+
+/** A Daily log from first openings and solved days: a solve is On-Day when its day was first opened on that day or earlier. */
+export function buildDailyLog(opened: Readonly<Record<string, number>>, solvedDays: Iterable<CalendarDay>): DailyLog {
+  const solves: Record<number, SolveKind> = {}
+  for (const day of solvedDays) {
+    const first = opened[day]
+    solves[day] = first !== undefined && first <= day ? 'onDay' : 'catchUp'
+  }
+  const firstOpened: Record<number, number> = {}
+  for (const [k, d] of Object.entries(opened)) firstOpened[Number(k)] = d
+  return { firstOpened, solves }
 }
 
 /** Marks a day solved. The kind is fixed by its first opening; later solves change nothing. */

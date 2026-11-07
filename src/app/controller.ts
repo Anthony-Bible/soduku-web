@@ -10,7 +10,7 @@ import {
   type KeyValueStore,
   type LettergridSaved,
 } from '../core'
-import { lettergridDaily, newDailyGame, wordListVersionFor, type WordList } from '../core/lettergrid'
+import { lettergridDaily, newGame, wordListVersionFor, type WordList } from '../core/lettergrid'
 import type { Api } from '../platform/api'
 import { LettergridSession } from './lettergridSession'
 import { SyncManager, type SyncStatus } from './sync'
@@ -175,8 +175,8 @@ export class AppController {
     this.leaveGame()
     this.session = null
     this.sheet = null
-    this.lettergrid = null
-    const token = ++this.openToken
+    this.dropLettergrid()
+    const token = this.openToken
     this.lettergridOpening = { day, error: null }
     this.changed()
     void this.finishOpening(day, opened, token)
@@ -206,7 +206,7 @@ export class AppController {
     if (token !== this.openToken) return
     try {
       const saved =
-        opened === 'needsGame' ? this.profile.startLettergridDaily(newDailyGame(lettergridDaily(day, words)), day) : opened
+        opened === 'needsGame' ? this.profile.startLettergridDaily(newGame(lettergridDaily(day, words)), day) : opened
       this.lettergrid = new LettergridSession(day, saved, words, this.profile, () => this.changed())
     } catch {
       // Solved on another device while the list loaded: nothing to open, so the player goes back Home.

@@ -3,7 +3,7 @@ import { useApp } from '../app/AppContext'
 import { Sheet } from './Sheet'
 import { formatElapsed } from './format'
 
-function Row({ label, value }: { label: string; value: string | number }) {
+export function Row({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="stat-row">
       <span>{label}</span>

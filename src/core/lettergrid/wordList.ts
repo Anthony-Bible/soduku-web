@@ -11,7 +11,6 @@ export function wordListPath(version: number): string {
 /** A loaded, version-tagged Word List. */
 export interface WordList {
   readonly version: number
-  readonly size: number
   /** Every accepted word, sorted, lowercase a-z. Lets a solver walk prefixes without a trie. */
   readonly words: readonly string[]
   /** True if `word` (any case) is accepted. */
@@ -26,7 +25,6 @@ export function createWordList(data: WordListData): WordList {
   const sorted = [...set].sort()
   return {
     version: data.version,
-    size: set.size,
     words: sorted,
     isWord: (word) => set.has(word.toLowerCase()),
     seedCandidates: data.seeds,

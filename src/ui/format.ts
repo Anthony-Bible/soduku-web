@@ -33,5 +33,8 @@ export function relativeTime(now: number, then: number): string {
   return unit(Math.floor(hours / 24), 'day')
 }
 
-export const starsText = (stars: number): string => '★'.repeat(stars)
+/** Par stars as text: 0 to 3 filled stars. */
+export const starsText = (stars: number): string => '★'.repeat(Math.max(0, Math.min(3, stars)))
+/** Each Play's score in order, with a loop arrow for a Swap. */
+export const playsText = (plays: readonly (number | null)[]): string => plays.map((p) => (p === null ? '↺' : String(p))).join(' · ')
 export const starsWords = (stars: number): string => (stars === 0 ? 'no stars' : `${stars} ${stars === 1 ? 'star' : 'stars'}`)

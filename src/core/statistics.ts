@@ -26,10 +26,9 @@ export function winRatePercent(s: DifficultyStats): number {
  * three stars), so a three-star solve counts toward all three.
  */
 export interface LettergridStatistics {
-  /** Daily Puzzles opened, On-Day or Catch-Up. */
+  /** Daily Puzzles solved, On-Day or Catch-Up; opening one without finishing it doesn't count. */
   readonly dailiesPlayed: number
   readonly bestScore: number | null
   readonly parReached: readonly [one: number, two: number, three: number]
 }
 
-export const emptyLettergridStatistics = (): LettergridStatistics => ({ dailiesPlayed: 0, bestScore: null, parReached: [0, 0, 0] })

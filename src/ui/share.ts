@@ -1,5 +1,5 @@
 import { displayName, shortTitle, type CalendarDay, type Difficulty } from '../core'
-import { formatElapsed } from './format'
+import { formatElapsed, playsText, starsText } from './format'
 
 export interface ShareInput {
   difficulty: Difficulty
@@ -41,8 +41,8 @@ export interface LettergridShareInput {
 
 /** The Lettergrid result text for the share sheet. It carries scores only, never a letter or a word. */
 export function lettergridShareText(r: LettergridShareInput): string {
-  const stars = '★'.repeat(Math.max(0, Math.min(3, r.stars)))
-  const line = `${r.plays.map((p) => (p === null ? '↺' : String(p))).join(' · ')} = ${r.score}${stars ? ` ${stars}` : ''}`
+  const stars = starsText(r.stars)
+  const line = `${playsText(r.plays)} = ${r.score}${stars ? ` ${stars}` : ''}`
   const lines = [`Lettergrid · Daily Puzzle ${shortTitle(r.day)}`, line]
   if (r.streak >= 2) lines.push(`🔥 ${r.streak}-day streak`)
   lines.push(r.url)

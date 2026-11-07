@@ -2,22 +2,17 @@ import type { CalendarDay, LettergridSaved, PlayerProfile } from '../core'
 import {
   applyAction,
   isFinished,
+  resultOf,
   scoreOf,
-  starsFor,
   type Action,
   type ActionResult,
+  type LettergridResult,
   type LettergridState,
   type PlacedTile,
   type WordList,
 } from '../core/lettergrid'
 
-/** What a finished Lettergrid Daily scored, for the finish overlay and the Share text. */
-export interface LettergridResult {
-  readonly score: number
-  readonly stars: 0 | 1 | 2 | 3
-  /** Score of each Play in order; null marks a Swap. */
-  readonly plays: readonly (number | null)[]
-}
+export type { LettergridResult }
 
 /**
  * One Lettergrid Daily being played. Every accepted Play is saved at once through the profile, so a finished
@@ -49,10 +44,7 @@ export class LettergridSession {
     return isFinished(this.saved.state)
   }
   get result(): LettergridResult | null {
-    if (!this.finished) return null
-    const state = this.saved.state
-    const score = scoreOf(state)
-    return { score, stars: starsFor(score, state.par), plays: state.plays.map((p) => (p.kind === 'swap' ? null : p.score)) }
+    return this.finished ? resultOf(this.saved.state) : null
   }
 
   private apply(action: Action): ActionResult {

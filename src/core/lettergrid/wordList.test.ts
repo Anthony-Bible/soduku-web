@@ -5,7 +5,7 @@ import fc from 'fast-check'
 import { BLOCKED_WORDS, isOffensive, LDNOOBW_WORDS, OFFENSIVE_WORDS } from './blocklist'
 import { extractAbbreviations, filterScowlWords, pickSeedCandidates } from './filter'
 import { deriveLetterValues, letterCounts, MAX_LETTER_VALUE } from './letterValues'
-import { LETTER_VALUES, letterValuesFor } from './letterValuesTable'
+import { letterValuesFor } from './letterValuesTable'
 import { CURRENT_WORD_LIST_VERSION, parseWordList, wordListPath } from './wordList'
 import {
   decodeWordList,
@@ -238,6 +238,8 @@ describe('the shipped Seed Word pool and inflections', () => {
 })
 
 describe('letter values', () => {
+  const LETTER_VALUES = letterValuesFor(CURRENT_WORD_LIST_VERSION)
+
   it('stay inside 1..MAX and never rise for a more common letter', () => {
     const counts = letterCounts(data.words)
     const letters = Object.keys(counts)
@@ -252,7 +254,6 @@ describe('letter values', () => {
 
   it('match the table frozen for this Word List version', () => {
     expect(deriveLetterValues(data.words)).toEqual(letterValuesFor(list.version))
-    expect(LETTER_VALUES).toBe(letterValuesFor(CURRENT_WORD_LIST_VERSION))
   })
 
   it('are unknown for a version that was never built', () => {

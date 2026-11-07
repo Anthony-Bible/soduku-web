@@ -10,6 +10,7 @@ import {
   colOf,
   letterValuesFor,
   rowOf,
+  playsLeft,
   starsFor,
   type ActionResult,
   type Bonus,
@@ -139,7 +140,7 @@ function Game({ session }: { session: LettergridSession }) {
 
   const result = session.result
   const finished = result !== null
-  const playsLeft = PLAYS_PER_DAILY - state.plays.length
+  const left = playsLeft(state)
   const blocked = sheet !== null || confirmSwap || finished
 
   const stagedAt = useMemo(() => new Map(staged.map((s) => [s.cell, s.rack])), [staged])
@@ -295,8 +296,8 @@ function Game({ session }: { session: LettergridSession }) {
         <button type="button" className="btn-text" onClick={() => controller.goHome()}>Home</button>
         <span className="game-title">Lettergrid · {shortTitle(session.day)}</span>
         <span className="game-mistakes">
-          <span aria-hidden="true">Plays left: <strong className="tabular">{playsLeft}</strong></span>
-          <span className="sr-only">{`${playsLeft} of ${PLAYS_PER_DAILY} Plays remaining`}</span>
+          <span aria-hidden="true">Plays left: <strong className="tabular">{left}</strong></span>
+          <span className="sr-only">{`${left} of ${PLAYS_PER_DAILY} Plays remaining`}</span>
         </span>
       </header>
       <div className="lg-scoreboard">

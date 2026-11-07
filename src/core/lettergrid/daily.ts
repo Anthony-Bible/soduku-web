@@ -110,12 +110,8 @@ export function lettergridDaily(day: CalendarDay, words: WordList): LettergridDa
   const layout = generateLayout(day, words)
   const solverVersion = parSolverVersionFor(day)
   if (solverVersion !== 1) throw new Error(`No Par solver v${solverVersion}`)
-  const greedy = solveGreedy(startState(layout, NO_PAR), words)
-  const state = startState(layout, parFromGreedy(greedy.score, solverVersion))
-  return { ...layout, grid: state.grid, seedCells: state.seedCells, par: state.par }
-}
-
-/** A fresh game of `daily`, with its 7-tile Rack dealt. */
-export function newDailyGame(daily: LettergridDaily): LettergridState {
-  return newGame(daily)
+  // The solver never mutates the state it is given, so its start grid is the Daily's.
+  const start = startState(layout, NO_PAR)
+  const greedy = solveGreedy(start, words)
+  return { ...layout, grid: start.grid, seedCells: start.seedCells, par: parFromGreedy(greedy.score, solverVersion) }
 }

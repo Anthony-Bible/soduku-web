@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { currentStreak, longTitle, longestStreak, solvedCount, type CalendarDay } from '../core'
+import { longTitle, type CalendarDay } from '../core'
 import { useApp } from '../app/AppContext'
 import { CalendarMonth } from './CalendarMonth'
-import { Icon } from './Icon'
 import { Sheet } from './Sheet'
-import { starsText, starsWords } from './format'
+import { Row } from './Stats'
+import { StreakSummary } from './Streak'
+import { playsText, starsText, starsWords } from './format'
 import { lettergridShareText } from './share'
 import { useShareText } from './useShare'
 
@@ -26,7 +27,7 @@ function DayResult({ day }: { day: CalendarDay }) {
       <p className="tabular">
         Score {solve.score} · <span aria-label={starsWords(solve.stars)}>{solve.stars > 0 ? starsText(solve.stars) : 'No stars'}</span>
       </p>
-      <p className="muted tabular">{solve.plays.map((p) => (p === null ? '↺' : p)).join(' · ')}</p>
+      <p className="muted tabular">{playsText(solve.plays)}</p>
       {share.button}
       {share.message}
     </section>
@@ -42,11 +43,7 @@ export function LettergridCalendarSheet() {
   const starsOf = (day: CalendarDay) => profile.lettergridSolve(day)?.stars ?? 0
   return (
     <Sheet title="Lettergrid Calendar" onClose={() => controller.openSheet(null)}>
-      <div className="summary">
-        <div><Icon name="flame" fill /><strong className="tabular">{currentStreak(log, today)}</strong><small>Streak</small></div>
-        <div><Icon name="trophy" /><strong className="tabular">{longestStreak(log)}</strong><small>Longest Streak</small></div>
-        <div><Icon name="check" /><strong className="tabular">{solvedCount(log)}</strong><small>Solved</small></div>
-      </div>
+      <StreakSummary log={log} today={today} />
       <CalendarMonth
         log={log}
         today={today}
@@ -78,10 +75,7 @@ export function LettergridStatsSheet() {
       <section aria-label="Daily Puzzles">
         <h3>Daily Puzzles</h3>
         {rows.map(([label, value]) => (
-          <div key={label} className="stat-row">
-            <span>{label}</span>
-            <span className="muted tabular">{value}</span>
-          </div>
+          <Row key={label} label={label} value={value} />
         ))}
       </section>
     </Sheet>

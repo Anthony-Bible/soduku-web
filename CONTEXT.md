@@ -24,7 +24,7 @@ A value entered into a cell that differs from the solution. Counted, never fatal
 _Avoid_: Strike, life, error
 
 **Statistics**:
-Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played, the best score and how many times each Par was reached.
+Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played (a Lettergrid Daily Puzzle counts as played only once it is solved), the best score and how many times each Par was reached.
 _Avoid_: Stats, scores, records
 
 ### Daily
@@ -150,5 +150,5 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 ## Flagged ambiguities
 
 - "Scrabble" was used to mean a second game — resolved: it is **Lettergrid**, an original word-tile game, not a copy of Scrabble.
-- Whether a Lettergrid **Daily Puzzle** counts as played in **Statistics** once opened or only once solved — unresolved.
+- Whether a Lettergrid **Daily Puzzle** counts as played in **Statistics** once opened or only once solved — resolved: only once solved.
 - "track daily" was used to mean a daily puzzle, a streak and a calendar — resolved: all three exist, and they are separate terms (**Daily Puzzle**, **Streak**, **Calendar**).

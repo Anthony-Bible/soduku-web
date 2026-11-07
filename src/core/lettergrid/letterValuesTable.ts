@@ -1,5 +1,4 @@
 import { LETTER_VALUES_V1 } from './letterValuesV1'
-import { CURRENT_WORD_LIST_VERSION } from './wordList'
 
 /**
  * Frozen letter values per Word List version. A Daily is scored against the values of the version
@@ -14,6 +13,3 @@ export function letterValuesFor(version: number): Readonly<Record<string, number
   if (!values) throw new Error(`No letter values for Word List v${version}`)
   return values
 }
-
-/** Letter values for the Word List version new Dailies are published with. */
-export const LETTER_VALUES = letterValuesFor(CURRENT_WORD_LIST_VERSION)
