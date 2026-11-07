@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { dayFromYMD, type Difficulty } from '../core'
-import { shareResult, shareText, type ShareHost } from './share'
+import { lettergridShareText, shareResult, shareText, type ShareHost } from './share'
 
 const URL = 'https://sudoku.anthony.bible'
 const difficulty = fc.constantFrom<Difficulty>('easy', 'medium', 'hard', 'expert')
@@ -81,5 +81,51 @@ describe('shareResult', () => {
   it('reports a failure when nothing works', async () => {
     expect(await shareResult({}, 'x')).toBe('failed')
     expect(await shareResult({ clipboard: { writeText: () => Promise.reject(new Error('denied')) } }, 'x')).toBe('failed')
+  })
+})
+
+describe('lettergridShareText', () => {
+  const lg = fc.record({
+    day: fc.integer({ min: dayFromYMD(2024, 1, 1), max: dayFromYMD(2030, 12, 31) }),
+    plays: fc.array(fc.option(fc.nat(200), { nil: null }), { minLength: 6, maxLength: 6 }),
+    score: fc.nat(1200),
+    stars: fc.integer({ min: 0, max: 3 }),
+    streak: fc.nat(400),
+    url: fc.constant(URL),
+  })
+
+  it('has the title, the score line, the optional streak line and the url, in that order', () => {
+    fc.assert(
+      fc.property(lg, (r) => {
+        const lines = lettergridShareText(r).split('\n')
+        expect(lines[0]).toMatch(/^Lettergrid · Daily Puzzle \w+ \d+$/)
+        expect(lines[1]).toBe(
+          `${r.plays.map((p) => p ?? '↺').join(' · ')} = ${r.score}${r.stars ? ` ${'★'.repeat(r.stars)}` : ''}`,
+        )
+        expect(lines.at(-1)).toBe(URL)
+        const streakLines = lines.filter((l) => l.includes('streak'))
+        expect(streakLines).toEqual(r.streak >= 2 ? [`🔥 ${r.streak}-day streak`] : [])
+        expect(lines).toHaveLength(3 + streakLines.length)
+      }),
+    )
+  })
+
+  it('matches the decided format, with a Swap shown as a loop arrow', () => {
+    const day = dayFromYMD(2026, 11, 3)
+    expect(
+      lettergridShareText({ day, plays: [18, 31, null, 44, 22, 27], score: 142, stars: 2, streak: 3, url: URL }),
+    ).toBe(`Lettergrid · Daily Puzzle Nov 3\n18 · 31 · ↺ · 44 · 22 · 27 = 142 ★★\n🔥 3-day streak\n${URL}`)
+    expect(
+      lettergridShareText({ day, plays: [18, 31, null, 44, 22, 27], score: 142, stars: 0, streak: 1, url: URL }),
+    ).toBe(`Lettergrid · Daily Puzzle Nov 3\n18 · 31 · ↺ · 44 · 22 · 27 = 142\n${URL}`)
+  })
+
+  it('never carries a letter beyond the title and url', () => {
+    fc.assert(
+      fc.property(lg, (r) => {
+        const body = lettergridShareText(r).split('\n').slice(1, -1).filter((l) => !l.includes('streak')).join('\n')
+        expect(body).not.toMatch(/[A-Za-z]/)
+      }),
+    )
   })
 })

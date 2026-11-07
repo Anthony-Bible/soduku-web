@@ -1,4 +1,5 @@
-import { MAX_CLOCK_SKEW_MS, clampDoc, docsEqual, mergeDocs, parseSyncDoc, stableStringify, type SyncDoc } from '../src/core/syncDoc'
+import { MAX_CLOCK_SKEW_MS, clampDoc, docsEqual, mergeDocs, parseSyncDoc, type SyncDoc } from '../src/core/syncDoc'
+import { stableStringify } from '../src/core/stable'
 import { authenticate, slideSession, type Deps } from './auth'
 import type { Env } from './env'
 import { SESSION_COOKIE, checkStateChanging, errorResponse, json, readCookie, readJson } from './http'

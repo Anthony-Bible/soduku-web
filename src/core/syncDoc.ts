@@ -1,9 +1,19 @@
 import { isAchievementId, type AchievementId } from './achievements'
 import type { CalendarDay } from './calendarDay'
-import type { DailyLog, SolveKind } from './dailyLog'
+import { buildDailyLog, recordOpen, type DailyLog } from './dailyLog'
 import { DIFFICULTIES, isDifficulty, type Difficulty } from './difficulty'
 import type { GameState } from './gameState'
 import type { Statistics } from './statistics'
+import {
+  clampLettergrid,
+  emptyLettergridProgress,
+  lettergridClock,
+  mergeLettergridProgress,
+  normalizeLettergridProgress,
+  parseLettergridProgress,
+  type LettergridProgress,
+} from './lettergridProgress'
+import { clampSlots, cmp, dailySlotDay, dailySlotKey, liveSlotIn, mergeSlots, newestSlotWrite, pruneSlots, stableStringify, unionMap, writeSlot } from './stable'
 import { isGameState, isInt, isNonNegInt, isObj, isSafeId } from './validate'
 
 // The synced document (ADR 0002). Every piece is stored in a form that merges cleanly, so `mergeDocs` is
@@ -12,7 +22,7 @@ import { isGameState, isInt, isNonNegInt, isObj, isSafeId } from './validate'
 export const SYNC_DOC_VERSION = 1
 /** The one slot for the ordinary Game in progress: last-writer-wins, so the Game that lost a conflict is dropped. */
 export const GAME_SLOT_KEY = 'game'
-export const dailySlotKey = (day: CalendarDay): string => `daily.${day}`
+export { dailySlotKey }
 
 /** Slots last touched more than this many days before the document's clock are dropped. */
 export const SLOT_RETENTION_DAYS = 90
@@ -66,29 +76,16 @@ export interface SyncDoc {
    * Keyed by a migration id, merged by max, so two copies of the same migration never double count.
    */
   readonly legacySolves: Readonly<Record<string, number>>
+  /** Lettergrid's own Daily log, Game-in-progress slots and solves (ADR 0003). Sudoku data never reads it. */
+  readonly lettergrid: LettergridProgress
 }
 
-export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, clock: 0 })
+export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, lettergrid: emptyLettergridProgress(), clock: 0 })
 
 // MARK: Deterministic ordering
 
-/** JSON with sorted keys, so equal values always compare equal as strings. */
-export function stableStringify(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`
-  if (typeof v === 'object' && v !== null) {
-    const o = v as Record<string, unknown>
-    return `{${Object.keys(o)
-      .filter((k) => o[k] !== undefined)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(v) ?? 'null'
-}
-
 export const docsEqual = (a: SyncDoc, b: SyncDoc): boolean => stableStringify(a) === stableStringify(b)
 
-const cmp = (a: number, b: number): number => (a < b ? -1 : a > b ? 1 : 0)
 const DIFF_INDEX = new Map<string, number>(DIFFICULTIES.map((d, i) => [d, i]))
 
 // MARK: Merge
@@ -132,30 +129,11 @@ export function mergeRecords(a: GameRecord, b: GameRecord): GameRecord {
   }
 }
 
-/** The slot that wins a conflict: newest `updatedAt`, then a cleared marker, then a stable tie-break. */
-export function mergeSlots(a: Slot, b: Slot): Slot {
-  const order =
-    cmp(a.updatedAt, b.updatedAt) ||
-    cmp(a.game === null ? 1 : 0, b.game === null ? 1 : 0) ||
-    (stableStringify(a.game) <= stableStringify(b.game) ? -1 : 1)
-  return order >= 0 ? a : b
-}
-
-function unionMap<T>(a: Readonly<Record<string, T>>, b: Readonly<Record<string, T>>, pick: (x: T, y: T) => T): Record<string, T> {
-  const out: Record<string, T> = {}
-  for (const k of Object.keys(a)) out[k] = a[k]
-  for (const k of Object.keys(b)) out[k] = Object.hasOwn(out, k) ? pick(out[k], b[k]) : b[k]
-  return out
-}
-
-const slotDay = (key: string): number | null => (key.startsWith('daily.') ? Number(key.slice(6)) : null)
-
-/** The newest Game start or slot write in a document. */
+/** The newest Sudoku Game start or slot write. Lettergrid keeps its own clock, so it never moves this one. */
 function contentClock(doc: SyncDoc): number {
   let t = 0
   for (const r of Object.values(doc.games)) if (r.startedAt > t) t = r.startedAt
-  for (const s of Object.values(doc.slots)) if (s.updatedAt > t) t = s.updatedAt
-  return t
+  return newestSlotWrite(doc.slots, t)
 }
 
 /**
@@ -167,14 +145,8 @@ function contentClock(doc: SyncDoc): number {
 export function normalizeDoc(doc: SyncDoc): SyncDoc {
   const clock = Math.max(doc.clock, contentClock(doc))
   const cutoff = clock - SLOT_RETENTION_DAYS * DAY_MS
-  const slots: Record<string, Slot> = {}
-  for (const [key, slot] of Object.entries(doc.slots)) {
-    const day = slotDay(key)
-    if (slot.updatedAt < cutoff) continue
-    if (day !== null && doc.solved[day] === true) continue
-    slots[key] = slot
-  }
-  return { ...doc, slots, clock }
+  const slots = pruneSlots(doc.slots, cutoff, (day) => doc.solved[day] === true)
+  return { ...doc, slots, lettergrid: normalizeLettergridProgress(doc.lettergrid, SLOT_RETENTION_DAYS * DAY_MS), clock }
 }
 
 /** How far past the current time a timestamp may be before `clampDoc` pulls it back. */
@@ -187,12 +159,10 @@ export const MAX_CLOCK_SKEW_MS = DAY_MS
  * `mergeDocs`, so the merge laws are untouched.
  */
 export function clampDoc(doc: SyncDoc, maxTime: number): SyncDoc {
-  if (Math.max(doc.clock, contentClock(doc)) <= maxTime) return doc
+  if (Math.max(doc.clock, contentClock(doc), lettergridClock(doc.lettergrid)) <= maxTime) return doc
   const games: Record<string, GameRecord> = {}
   for (const [id, r] of Object.entries(doc.games)) games[id] = r.startedAt > maxTime ? { ...r, startedAt: maxTime } : r
-  const slots: Record<string, Slot> = {}
-  for (const [key, slot] of Object.entries(doc.slots)) slots[key] = slot.updatedAt > maxTime ? { ...slot, updatedAt: maxTime } : slot
-  return { ...doc, games, slots, clock: Math.min(doc.clock, maxTime) }
+  return { ...doc, games, slots: clampSlots(doc.slots, maxTime), lettergrid: clampLettergrid(doc.lettergrid, maxTime), clock: Math.min(doc.clock, maxTime) }
 }
 
 /** Merges two documents. The result does not depend on argument order or grouping, and loses nothing. */
@@ -205,6 +175,7 @@ export function mergeDocs(a: SyncDoc, b: SyncDoc): SyncDoc {
     unlockedAt: unionMap(a.unlockedAt as Record<string, number>, b.unlockedAt as Record<string, number>, minNumber) as SyncDoc['unlockedAt'],
     slots: unionMap(a.slots, b.slots, mergeSlots),
     legacySolves: unionMap(a.legacySolves, b.legacySolves, (x, y) => Math.max(x, y)),
+    lettergrid: mergeLettergridProgress(a.lettergrid, b.lettergrid),
     // Taken from the inputs (not the merged result, where an earlier start may have replaced a later one).
     clock: Math.max(a.clock, b.clock, contentClock(a), contentClock(b)),
   })
@@ -233,17 +204,7 @@ export const wonGameCount = (doc: SyncDoc, except?: string): number =>
   Object.values(doc.legacySolves).reduce((a, b) => a + b, 0)
 
 /** The Daily log, with each solve's kind derived from the merged earliest opening. */
-export function deriveDailyLog(doc: SyncDoc): DailyLog {
-  const solves: Record<number, SolveKind> = {}
-  for (const k of Object.keys(doc.solved)) {
-    const day = Number(k)
-    const opened = doc.firstOpened[k]
-    solves[day] = opened !== undefined && opened <= day ? 'onDay' : 'catchUp'
-  }
-  const firstOpened: Record<number, number> = {}
-  for (const [k, d] of Object.entries(doc.firstOpened)) firstOpened[Number(k)] = d
-  return { firstOpened, solves }
-}
+export const deriveDailyLog = (doc: SyncDoc): DailyLog => buildDailyLog(doc.firstOpened, Object.keys(doc.solved).map(Number))
 
 // MARK: Local edits (each returns a new document)
 
@@ -269,10 +230,7 @@ export function winGame(
 }
 
 /** Records the first opening of a day's Daily Puzzle. A future day is ignored; the earliest opening is kept. */
-export function openDay(doc: SyncDoc, day: CalendarDay, today: CalendarDay): SyncDoc {
-  if (day > today || doc.firstOpened[day] !== undefined) return doc
-  return { ...doc, firstOpened: { ...doc.firstOpened, [day]: today } }
-}
+export const openDay = (doc: SyncDoc, day: CalendarDay, today: CalendarDay): SyncDoc => recordOpen(doc, day, today)
 
 /** Marks a day solved. Does nothing for a day that was never opened. */
 export function solveDay(doc: SyncDoc, day: CalendarDay): SyncDoc {
@@ -289,21 +247,16 @@ export function unlockAchievements(doc: SyncDoc, ids: readonly AchievementId[], 
 
 /** Writes a slot from this device, unless the slot already holds something newer. `null` leaves a cleared marker. */
 export function setSlot(doc: SyncDoc, key: string, game: GameState | null, updatedAt: number): SyncDoc {
-  const existing = doc.slots[key]
-  if (existing && existing.updatedAt > updatedAt) return doc
-  // A Game already won (here or on another device) never comes back, even from a stale open screen.
-  if (game !== null && isFinished(doc, game.id)) return doc
-  return { ...doc, slots: { ...doc.slots, [key]: { updatedAt, game } } }
+  const slots = writeSlot(doc.slots, key, { updatedAt, game }, (id) => isFinished(doc, id))
+  return slots === doc.slots ? doc : { ...doc, slots }
 }
 
 /** Whether a Game's record is already won. Won records are permanent, so this only ever becomes true. */
 export const isFinished = (doc: SyncDoc, gameId: string): boolean => doc.games[gameId]?.wonSeconds != null
 
 /** The Game that can be continued from a slot. A slot whose Game is already won counts as cleared. */
-export const liveSlot = (doc: SyncDoc, key: string): Slot & { game: GameState } | null => {
-  const s = doc.slots[key]
-  return s && s.game !== null && !isFinished(doc, s.game.id) ? (s as Slot & { game: GameState }) : null
-}
+export const liveSlot = (doc: SyncDoc, key: string): Slot & { game: GameState } | null =>
+  liveSlotIn(doc.slots, key, (id) => isFinished(doc, id))
 
 /** The ordinary Game that can be continued, if any. */
 export const liveGameSlot = (doc: SyncDoc): (Slot & { game: GameState }) | null => liveSlot(doc, GAME_SLOT_KEY)
@@ -321,7 +274,7 @@ const isRecord = (id: string, v: unknown): v is GameRecord =>
   (v.hintsUsed === null || isNonNegInt(v.hintsUsed)) &&
   (v.wonSeconds !== null || (v.mistakes === null && v.hintsUsed === null))
 
-const isSlotKey = (k: string): boolean => k === GAME_SLOT_KEY || (k.startsWith('daily.') && isInt(Number(k.slice(6))))
+const isSlotKey = (k: string): boolean => k === GAME_SLOT_KEY || isInt(dailySlotDay(k))
 
 /** Returns a clean copy of an untrusted value if it is a well-formed document, else null. Copying drops unknown fields. */
 export function parseSyncDoc(raw: unknown): SyncDoc | null {
@@ -381,9 +334,12 @@ export function parseSyncDoc(raw: unknown): SyncDoc | null {
     if (!isSafeId(k) || !isNonNegInt(n)) return null
     outLegacy[k] = n
   }
+  // Documents from before Lettergrid have no such field; they load as having no Lettergrid progress.
+  const lettergrid = raw.lettergrid === undefined ? emptyLettergridProgress() : parseLettergridProgress(raw.lettergrid)
+  if (!lettergrid) return null
   const clockRaw = raw.clock === undefined ? 0 : raw.clock
   if (typeof clockRaw !== 'number' || !Number.isFinite(clockRaw) || clockRaw < 0) return null
-  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, clock: clockRaw }
+  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, lettergrid, clock: clockRaw }
 }
 
 // MARK: Results

@@ -5,6 +5,7 @@ import { catchUpAchievements } from './catchUp'
 import { DIFFICULTIES } from './difficulty'
 import { generate } from './generator'
 import { newGame, type GameState } from './gameState'
+import { emptyLettergridProgress } from './lettergridProgress'
 import {
   GAME_SLOT_KEY,
   liveGameSlot,
@@ -88,6 +89,7 @@ const arbDoc: fc.Arbitrary<SyncDoc> = fc
       unlockedAt: pick(UNLOCKS, unlocks as (number | undefined)[]),
       slots: pick(SLOT_KEYS, slots as (Slot | undefined)[]),
       legacySolves: pick(['m1', 'm2'], legacy as (number | undefined)[]),
+      lettergrid: emptyLettergridProgress(),
       clock: 0,
     } as SyncDoc)
   })

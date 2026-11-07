@@ -8,16 +8,32 @@ import {
   type Difficulty,
   type GameSession,
   type KeyValueStore,
+  type LettergridSaved,
 } from '../core'
+import { lettergridDaily, newGame, wordListVersionFor, type WordList } from '../core/lettergrid'
 import type { Api } from '../platform/api'
+import { LettergridSession } from './lettergridSession'
 import { SyncManager, type SyncStatus } from './sync'
+import { loadWordList } from './wordListLoader'
 
-export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account'
+export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account' | 'lettergridCalendar' | 'lettergridStats'
+
+/** Which game's Home is showing. The app always starts on Sudoku. */
+export type Tab = 'sudoku' | 'lettergrid'
+
+/** A Lettergrid Daily being opened: the Word List loads first. `error` is set when that failed. */
+export interface LettergridOpening {
+  readonly day: CalendarDay
+  readonly error: string | null
+}
 
 export interface Snapshot {
   readonly version: number
   readonly session: GameSession | null
   readonly sheet: Sheet | null
+  readonly tab: Tab
+  readonly lettergrid: LettergridSession | null
+  readonly lettergridOpening: LettergridOpening | null
   readonly today: CalendarDay
   readonly sync: SyncStatus
 }
@@ -31,6 +47,11 @@ export class AppController {
   readonly sync: SyncManager
   private session: GameSession | null = null
   private sheet: Sheet | null = null
+  private tab: Tab = 'sudoku'
+  private lettergrid: LettergridSession | null = null
+  private lettergridOpening: LettergridOpening | null = null
+  /** Bumped whenever an opening is started or abandoned, so a slow Word List load can tell it is stale. */
+  private openToken = 0
   private today: CalendarDay
   private version = 0
   private snapshot: Snapshot
@@ -40,6 +61,7 @@ export class AppController {
     kv: KeyValueStore,
     private readonly clock: () => Date = () => new Date(),
     api: Api | null = null,
+    private readonly loadWords: (version: number) => Promise<WordList> = (version) => loadWordList(version),
   ) {
     const store = new SaveStore(kv)
     this.profile = new PlayerProfile(store, () => this.clock().getTime())
@@ -47,13 +69,23 @@ export class AppController {
     this.profile.onSolve = () => void this.sync.sync()
     this.sync.onCleared = () => {
       this.session = null
+      this.dropLettergrid()
     }
     this.today = dayFromDate(this.clock())
     this.snapshot = this.makeSnapshot()
   }
 
   private makeSnapshot(): Snapshot {
-    return { version: this.version, session: this.session, sheet: this.sheet, today: this.today, sync: this.sync.getStatus() }
+    return {
+      version: this.version,
+      session: this.session,
+      sheet: this.sheet,
+      tab: this.tab,
+      lettergrid: this.lettergrid,
+      lettergridOpening: this.lettergridOpening,
+      today: this.today,
+      sync: this.sync.getStatus(),
+    }
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -84,8 +116,15 @@ export class AppController {
     this.changed()
   }
 
+  setTab(tab: Tab): void {
+    if (this.tab === tab) return
+    this.tab = tab
+    this.changed()
+  }
+
   startNewGame(difficulty: Difficulty): void {
     this.leaveGame()
+    this.dropLettergrid()
     this.session = this.profile.startGame(generate(difficulty))
     this.sheet = null
     this.changed()
@@ -95,6 +134,7 @@ export class AppController {
     const session = this.profile.continueGame()
     if (!session) return
     this.leaveGame()
+    this.dropLettergrid()
     this.session = session
     this.changed()
   }
@@ -119,10 +159,74 @@ export class AppController {
     this.openDaily(this.today)
   }
 
+  /**
+   * Opens a day's Lettergrid Daily (past days and today). The first opening is recorded at once; the Word List
+   * the day was published with is fetched next, so the screen shows a loading state, then the game: resumed
+   * from its saved progress or dealt fresh. A failed load leaves a message with a retry.
+   */
+  openLettergridDay(day: CalendarDay): void {
+    this.refreshToday()
+    const opened = this.profile.openLettergridDaily(day, this.today)
+    if (opened === null) {
+      this.lettergridOpening = null
+      this.changed()
+      return
+    }
+    this.leaveGame()
+    this.session = null
+    this.sheet = null
+    this.dropLettergrid()
+    const token = this.openToken
+    this.lettergridOpening = { day, error: null }
+    this.changed()
+    void this.finishOpening(day, opened, token)
+  }
+
+  /** Opens today's Lettergrid Daily, using the real current date rather than a possibly stale rendered one. */
+  openLettergridToday(): void {
+    this.refreshToday()
+    this.openLettergridDay(this.today)
+  }
+
+  /** Tries again after the Word List failed to load. */
+  retryLettergridOpening(): void {
+    if (this.lettergridOpening?.error) this.openLettergridDay(this.lettergridOpening.day)
+  }
+
+  private async finishOpening(day: CalendarDay, opened: LettergridSaved | 'needsGame', token: number): Promise<void> {
+    let words: WordList
+    try {
+      words = await this.loadWords(opened === 'needsGame' ? wordListVersionFor(day) : opened.state.wordListVersion)
+    } catch {
+      if (token !== this.openToken) return
+      this.lettergridOpening = { day, error: "Couldn't load the Word List. Check your connection and try again." }
+      this.changed()
+      return
+    }
+    if (token !== this.openToken) return
+    try {
+      const saved =
+        opened === 'needsGame' ? this.profile.startLettergridDaily(newGame(lettergridDaily(day, words)), day) : opened
+      this.lettergrid = new LettergridSession(day, saved, words, this.profile, () => this.changed())
+    } catch {
+      // Solved on another device while the list loaded: nothing to open, so the player goes back Home.
+      this.lettergrid = null
+    }
+    this.lettergridOpening = null
+    this.changed()
+  }
+
+  private dropLettergrid(): void {
+    this.openToken++
+    this.lettergrid = null
+    this.lettergridOpening = null
+  }
+
   /** Saves and leaves the Game screen. */
   goHome(): void {
     this.leaveGame()
     this.session = null
+    this.dropLettergrid()
     this.sheet = null
     this.changed()
   }
@@ -140,6 +244,7 @@ export class AppController {
       hadAccount && this.sync.getStatus().account === null && Object.keys(this.profile.syncDoc().games).length === 0
     if (ownerChanged || signedOutElsewhere) {
       this.session = null
+      this.dropLettergrid()
       this.sheet = null
       this.changed()
     }
@@ -149,6 +254,7 @@ export class AppController {
   async signOut(): Promise<void> {
     await this.sync.signOut()
     this.session = null
+    this.dropLettergrid()
     this.sheet = null
     this.changed()
   }
