@@ -10,12 +10,27 @@ import { lettergridShareText } from './share'
 import { useFocusTrap } from './useFocusTrap'
 import { useShareText } from './useShare'
 
-/** Shown once the last Play is made. A Lettergrid Daily is solved whatever the score; the stars are extra. */
-export function LettergridFinish({ session, result, onHome }: { session: LettergridSession; result: LettergridResult; onHome: () => void }) {
+interface Props {
+  session: LettergridSession
+  result: LettergridResult
+  onHome: () => void
+  /** Puts the overlay away to show the final board. */
+  onViewBoard: () => void
+  /** Plays the day again from the start, for practice. */
+  onPlayAgain: () => void
+}
+
+/**
+ * Shown once the last Play is made. A Lettergrid Daily is solved whatever the score; the stars are extra. A
+ * practice replay shows its own score next to the one that counts, and has no Share.
+ */
+export function LettergridFinish({ session, result, onHome, onViewBoard, onPlayAgain }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   useFocusTrap(ref)
   const reduceMotion = usePrefersReducedMotion()
   const { controller, today } = useApp()
+  const practice = session.practice
+  const counted = practice ? controller.profile.lettergridSolve(session.day) : null
   const streak = session.day === today ? controller.profile.lettergridStreak(today) : 0
   const share = useShareText((url) =>
     lettergridShareText({ day: session.day, plays: result.plays, score: result.score, stars: result.stars, streak, url }),
@@ -25,9 +40,9 @@ export function LettergridFinish({ session, result, onHome }: { session: Letterg
   const next = nextTier === undefined ? 0 : nextTier - result.score
   return (
     <div className="modal-backdrop win">
-      <div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Daily Puzzle Solved!">
+      <div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={practice ? 'Practice Finished' : 'Daily Puzzle Solved!'}>
         <span className="trophy"><Icon name="trophy" size={52} /></span>
-        <h2>Daily Puzzle Solved!</h2>
+        <h2>{practice ? 'Practice Finished' : 'Daily Puzzle Solved!'}</h2>
         <div className="muted win-details">
           <div>Lettergrid · {shortTitle(session.day)}</div>
           <div className="tabular">Score {result.score}</div>
@@ -37,14 +52,21 @@ export function LettergridFinish({ session, result, onHome }: { session: Letterg
             ))}
           </div>
           {next > 0 && <div className="tabular">{next} more for {starsText(result.stars + 1)}</div>}
+          {counted && <div className="tabular">Counted score for this day: {counted.score}. Practice never changes it.</div>}
         </div>
         <div className="col-buttons">
-          {share.button}
+          {!practice && share.button}
+          <button type="button" className="btn" onClick={onViewBoard}>
+            View board
+          </button>
+          <button type="button" className="btn" onClick={onPlayAgain}>
+            Play again
+          </button>
           <button type="button" className="btn btn-primary" onClick={onHome} autoFocus>
             Home
           </button>
         </div>
-        {share.message}
+        {!practice && share.message}
       </div>
       {!reduceMotion && result.stars > 0 && <Confetti />}
     </div>

@@ -17,6 +17,9 @@ export type { LettergridResult }
 /**
  * One Lettergrid Daily being played. Every accepted Play is saved at once through the profile, so a finished
  * Daily is recorded as a solve the moment its last Play lands. A rejected Play changes nothing.
+ *
+ * A practice session replays an already solved day from its start: it is never saved, synced or counted, since
+ * a Daily is one attempt (ADR 0003).
  */
 export class LettergridSession {
   private saved: LettergridSaved
@@ -27,6 +30,7 @@ export class LettergridSession {
     private readonly words: WordList,
     private readonly profile: PlayerProfile,
     private readonly onChange: () => void,
+    readonly practice = false,
   ) {
     this.saved = saved
   }
@@ -51,7 +55,7 @@ export class LettergridSession {
     const result = applyAction(this.saved.state, action, this.words)
     if (!result.ok) return result
     this.saved = { ...this.saved, state: result.state }
-    this.profile.saveLettergrid(this.day, this.saved)
+    if (!this.practice) this.profile.saveLettergrid(this.day, this.saved)
     this.onChange()
     return result
   }

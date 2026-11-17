@@ -2,6 +2,7 @@ import type { CalendarDay } from './calendarDay'
 import { buildDailyLog, recordOpen, type DailyLog } from './dailyLog'
 import { CELL_COUNT, GRID_SIZE, PLAYS_PER_DAILY, RACK_SIZE, TILE_RUN_LENGTH } from './lettergrid/grid'
 import type { LettergridResult, LettergridState } from './lettergrid/game'
+import { copyBoard, isLettergridBoard, type LettergridBoard } from './lettergrid/finalBoard'
 import type { LettergridStatistics } from './statistics'
 import {
   clampSlots,
@@ -30,6 +31,8 @@ export interface LettergridSolve extends LettergridResult {
   readonly day: CalendarDay
   /** Epoch milliseconds when the last Play was made. */
   readonly finishedAt: number
+  /** The finished board, so it can be viewed and replayed later. Solves recorded before it was kept have none. */
+  readonly board?: LettergridBoard
 }
 
 /** A Lettergrid Game in progress. It carries its own grid, Tile Run, Par and Word List version. */
@@ -216,7 +219,9 @@ function parseSolve(id: string, v: unknown): LettergridSolve | null {
   if (v.stars !== 0 && v.stars !== 1 && v.stars !== 2 && v.stars !== 3) return null
   if (!Array.isArray(v.plays) || v.plays.length !== PLAYS_PER_DAILY || !v.plays.every((p) => p === null || isNonNegInt(p))) return null
   if ((v.plays as (number | null)[]).reduce<number>((n, p) => n + (p ?? 0), 0) !== v.score) return null
-  return { gameId: id, day: v.day, finishedAt: v.finishedAt, score: v.score, stars: v.stars, plays: [...(v.plays as (number | null)[])] }
+  if (v.board !== undefined && !isLettergridBoard(v.board)) return null
+  const solve: LettergridSolve = { gameId: id, day: v.day, finishedAt: v.finishedAt, score: v.score, stars: v.stars, plays: [...(v.plays as (number | null)[])] }
+  return v.board === undefined ? solve : { ...solve, board: copyBoard(v.board) }
 }
 
 /** Returns a clean copy of an untrusted value if it is well-formed Lettergrid progress, else null. */

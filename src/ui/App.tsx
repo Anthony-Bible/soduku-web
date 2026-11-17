@@ -8,6 +8,7 @@ import { DifficultyPicker } from './DifficultyPicker'
 import { GameScreen } from './GameScreen'
 import { Home } from './Home'
 import { LettergridCalendarSheet, LettergridStatsSheet } from './LettergridCalendar'
+import { LettergridBoardSheet } from './LettergridReplay'
 import { LettergridScreen } from './LettergridScreen'
 import { StatsSheet } from './Stats'
 
@@ -32,6 +33,7 @@ export function App() {
       {sheet === 'calendar' && <CalendarSheet />}
       {sheet === 'lettergridCalendar' && <LettergridCalendarSheet />}
       {sheet === 'lettergridStats' && <LettergridStatsSheet />}
+      {sheet === 'lettergridBoard' && <LettergridBoardSheet />}
       {sheet === 'account' && <AccountSheet />}
     </>
   )

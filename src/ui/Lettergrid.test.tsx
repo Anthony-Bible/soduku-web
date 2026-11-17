@@ -28,8 +28,8 @@ function user() {
   return u
 }
 
-function setup() {
-  const controller = new AppController(new MemoryStore(), () => now, null, (v) => loader(v))
+function setup(store = new MemoryStore()) {
+  const controller = new AppController(store, () => now, null, (v) => loader(v))
   render(
     <AppProvider controller={controller}>
       <App />
@@ -126,7 +126,7 @@ describe('Home tabs', () => {
 })
 
 describe('Lettergrid Daily card', () => {
-  it('goes from Play to Continue to Solved, with the Streak and Score', async () => {
+  it('goes from Play to Continue to View board, with the Streak and Score', async () => {
     const u = user()
     const c = setup()
     await openTab(u)
@@ -147,8 +147,8 @@ describe('Lettergrid Daily card', () => {
     expect(screen.getByText('5 of 6 Plays remaining')).toBeTruthy()
     finish(c)
     await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
-    const solved = screen.getByRole('button', { name: 'Solved' })
-    expect(solved).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'View board' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Play again' })).toBeEnabled()
     expect(within(screen.getByLabelText('Lettergrid Daily Puzzle')).getByText(/^Score \d+/)).toBeTruthy()
     expect(within(screen.getByLabelText('Lettergrid Daily Puzzle')).getByText('Streak 1 day')).toBeTruthy()
   })
@@ -408,5 +408,74 @@ describe('Lettergrid Statistics', () => {
       const label = `${i + 1} ${i === 0 ? 'star' : 'stars'} Par reached`
       expect(within(sheet).getByText(label).nextSibling).toHaveTextContent(String(n))
     })
+  })
+})
+
+describe('Lettergrid board and practice', () => {
+  it('views the final board from the finish overlay, then brings the result back', async () => {
+    const u = user()
+    const c = setup()
+    await playLettergrid(u)
+    finish(c)
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'View board' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('group', { name: 'Lettergrid board' })).toBeTruthy()
+    await u.click(screen.getByRole('button', { name: 'Result' }))
+    expect(screen.getByRole('dialog', { name: 'Daily Puzzle Solved!' })).toBeTruthy()
+  })
+
+  it('replays a solved day\'s board Play by Play from Home, any time later', async () => {
+    const u = user()
+    const store = new MemoryStore()
+    const c = setup(store)
+    await playLettergrid(u)
+    finish(c)
+    const finalGrid = [...lettergrid(c).state.grid]
+    const placed = lettergrid(c).state.plays[0].tiles.length
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
+
+    // A new app instance on a later day still has it.
+    cleanup()
+    now = new Date(2026, 10, 9, 12)
+    setup(store)
+    await openTab(u)
+    await u.click(screen.getByRole('button', { name: 'Calendar' }))
+    await u.click(screen.getByRole('button', { name: /Tuesday, November 3, 2026, solved/ }))
+    await u.click(screen.getByRole('button', { name: 'View board' }))
+    const sheet = screen.getByRole('dialog', { name: 'Lettergrid Board' })
+    const board = within(sheet).getByRole('img', { name: 'Lettergrid board after 6 of 6 Plays' })
+    const letters = () => board.querySelectorAll('.lg-cell.tile').length
+    expect(letters()).toBe(finalGrid.filter(Boolean).length)
+    await u.click(within(sheet).getByRole('button', { name: 'First: the opening grid' }))
+    const seed = letters()
+    expect(within(sheet).getByRole('status')).toHaveTextContent('Start: the Seed Word')
+    await u.click(within(sheet).getByRole('button', { name: 'Next' }))
+    expect(letters()).toBe(seed + placed)
+    expect(within(sheet).getByRole('status')).toHaveTextContent(/Play 1 of 6: \+\d+/)
+
+    // Done goes back to the Calendar it came from.
+    await u.click(within(sheet).getByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('dialog', { name: 'Lettergrid Calendar' })).toBeTruthy()
+  })
+
+  it('plays a solved day again for practice without changing what counts', async () => {
+    const u = user()
+    const c = setup()
+    await playLettergrid(u)
+    finish(c)
+    const counted = c.profile.lettergridSolve(today())!
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Play again' }))
+    await screen.findByRole('group', { name: 'Lettergrid board' })
+    expect(lettergrid(c).practice).toBe(true)
+    expect(screen.getByText('Practice')).toBeTruthy()
+    expect(screen.getByText('6 of 6 Plays remaining')).toBeTruthy()
+
+    finish(c, { firstPlay: false })
+    const dialog = await screen.findByRole('dialog', { name: 'Practice Finished' })
+    expect(within(dialog).getByText(`Counted score for this day: ${counted.score}. Practice never changes it.`)).toBeTruthy()
+    expect(within(dialog).queryByRole('button', { name: /Share|Copy/ })).toBeNull()
+    expect(c.profile.lettergridSolve(today())).toEqual(counted)
+    expect(Object.keys(c.profile.syncDoc().lettergrid.solves)).toEqual([counted.gameId])
+    expect(c.profile.hasLettergridInProgress(today())).toBe(false)
   })
 })

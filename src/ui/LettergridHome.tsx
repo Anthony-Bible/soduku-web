@@ -35,9 +35,20 @@ function DailyCard() {
         </p>
       )}
       <div className="row-buttons">
-        <button type="button" className="btn btn-primary grow" disabled={solve !== null} onClick={() => controller.openLettergridToday()}>
-          <Icon name={solve ? 'check' : 'play'} size={18} fill={!solve} /> {solve ? 'Solved' : inProgress ? 'Continue' : 'Play'}
-        </button>
+        {solve ? (
+          <>
+            <button type="button" className="btn btn-primary grow lg-nowrap" onClick={() => controller.openLettergridBoard(today)}>
+              <Icon name="check" size={18} /> View board
+            </button>
+            <button type="button" className="btn lg-nowrap" onClick={() => controller.practiceLettergridDay(today)}>
+              Play again
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-primary grow" onClick={() => controller.openLettergridToday()}>
+            <Icon name="play" size={18} fill /> {inProgress ? 'Continue' : 'Play'}
+          </button>
+        )}
         <button type="button" className="btn" aria-label="Calendar" onClick={() => controller.openSheet('lettergridCalendar')}>
           <Icon name="calendar" size={20} />
         </button>

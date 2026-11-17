@@ -12,6 +12,7 @@ import { CURRENT_WORD_LIST_VERSION, parseWordList, wordListPath } from './letter
 import { newGame as newSudoku } from './gameState'
 import { applyAction, newGame } from './lettergrid/game'
 import { CELL_COUNT, PLAYS_PER_DAILY, TILE_RUN_LENGTH } from './lettergrid/grid'
+import { boardFrame, boardOf } from './lettergrid/finalBoard'
 import type { LettergridState } from './lettergrid/game'
 import {
   addLettergridSolve,
@@ -352,5 +353,64 @@ describe('PlayerProfile Lettergrid Dailies', () => {
     expect(profile.dailyLog).toEqual({ firstOpened: {}, solves: {} })
     expect(profile.currentStreak(100)).toBe(0)
     expect(profile.statistics.easy.played).toBe(0)
+  })
+})
+
+describe('finished boards', () => {
+  const words = () => parseWordList(readFileSync(resolve(__dirname, '../../public', wordListPath(CURRENT_WORD_LIST_VERSION)), 'utf8'))
+
+  /** A real Daily: the best Play twice, then Swaps. */
+  function finished(): LettergridState {
+    const w = words()
+    let state = newGame(lettergridDaily(dayFromYMD(2026, 11, 5), w))
+    while (state.plays.length < PLAYS_PER_DAILY) {
+      const best = state.plays.length < 2 ? bestPlay(state, w) : null
+      const r = applyAction(state, best ? { type: 'play', tiles: best.tiles } : { type: 'swap' }, w)
+      if (!r.ok) throw new Error(r.reason)
+      state = r.state
+    }
+    return state
+  }
+
+  test('a solve keeps its final board, which replays from the Seed Word to the end', () => {
+    const state = finished()
+    const clock = { t: 1_000 }
+    let n = 0
+    const profile = new PlayerProfile(new SaveStore(new MemoryStore()), () => clock.t, () => `id${++n}`)
+    const saved = profile.startLettergridDaily(newGame(lettergridDaily(dayFromYMD(2026, 11, 5), words())), 100)
+    profile.saveLettergrid(100, { ...saved, state })
+    const board = profile.lettergridSolve(100)!.board!
+    expect(board).toEqual(boardOf(state))
+
+    expect(boardFrame(board, PLAYS_PER_DAILY).grid).toEqual(state.grid)
+    const start = boardFrame(board, 0)
+    expect(start.grid).toEqual(newGame(lettergridDaily(dayFromYMD(2026, 11, 5), words())).grid)
+    expect([...start.seedCells].sort((a, b) => a - b)).toEqual([...state.seedCells].sort((a, b) => a - b))
+    expect(start.bonuses).toEqual(state.bonuses)
+    expect(boardFrame(board, 1).placed.size).toBe(state.plays[0].tiles.length)
+    expect(boardFrame(board, 1).grid.filter(Boolean).length).toBe(start.grid.filter(Boolean).length + state.plays[0].tiles.length)
+  })
+
+  test('a solve with a board round-trips, and one without still loads', () => {
+    const state = finished()
+    const solve: LettergridSolve = { gameId: 'b', day: 100, finishedAt: 5, score: state.plays.reduce((n, p) => n + p.score, 0), stars: 0, plays: state.plays.map((p) => (p.kind === 'swap' ? null : p.score)), board: boardOf(state) }
+    const legacy: LettergridSolve = { gameId: 'old', day: 99, finishedAt: 4, score: 0, stars: 0, plays: [null, null, null, null, null, null] }
+    const doc = withLetter(addLettergridSolve(addLettergridSolve(emptyLettergridProgress(), solve), legacy))
+    const parsed = parseSyncDoc(JSON.parse(JSON.stringify(doc)))
+    expect(parsed).toEqual(doc)
+    expect(parsed!.lettergrid.solves.old.board).toBeUndefined()
+  })
+
+  test('a malformed board is rejected', () => {
+    const state = finished()
+    const board = boardOf(state)
+    const solve = { gameId: 'b', day: 100, finishedAt: 5, score: 0, stars: 0, plays: [null, null, null, null, null, null] }
+    for (const bad of [
+      { ...board, grid: board.grid.slice(1) },
+      { ...board, bonuses: 'x'.repeat(CELL_COUNT) },
+      { ...board, plays: board.plays.slice(1) },
+      { ...board, plays: [[board.grid.indexOf('.')], [], [], [], [], []] },
+      { ...board, plays: [[CELL_COUNT], [], [], [], [], []] },
+    ]) expect(parseLettergridProgress({ firstOpened: {}, slots: {}, clock: 0, solves: { b: { ...solve, board: bad } } })).toBeNull()
   })
 })

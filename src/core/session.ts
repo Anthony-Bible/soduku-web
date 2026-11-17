@@ -10,6 +10,7 @@ import type { Position } from './position'
 import { randomId } from './id'
 import type { SaveStore } from './saveStore'
 import { isFinished as isLettergridDone, resultOf, type LettergridState } from './lettergrid/game'
+import { boardOf } from './lettergrid/finalBoard'
 import {
   addLettergridSolve,
   countedSolves,
@@ -235,7 +236,7 @@ export class PlayerProfile {
   private recordLettergridSolve(day: CalendarDay, saved: LettergridSaved): void {
     this.reload()
     if (this.doc.lettergrid.solves[saved.id]) return
-    const solve: LettergridSolve = { gameId: saved.id, day, finishedAt: this.now(), ...resultOf(saved.state) }
+    const solve: LettergridSolve = { gameId: saved.id, day, finishedAt: this.now(), ...resultOf(saved.state), board: boardOf(saved.state) }
     this.update((doc) => {
       const lettergrid = addLettergridSolve(doc.lettergrid, solve)
       return { ...doc, lettergrid: setLettergridSlot(lettergrid, day, null, this.now()) }

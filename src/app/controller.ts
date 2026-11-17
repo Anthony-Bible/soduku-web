@@ -16,7 +16,7 @@ import { LettergridSession } from './lettergridSession'
 import { SyncManager, type SyncStatus } from './sync'
 import { loadWordList } from './wordListLoader'
 
-export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account' | 'lettergridCalendar' | 'lettergridStats'
+export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account' | 'lettergridCalendar' | 'lettergridStats' | 'lettergridBoard'
 
 /** Which game's Home is showing. The app always starts on Sudoku. */
 export type Tab = 'sudoku' | 'lettergrid'
@@ -25,6 +25,14 @@ export type Tab = 'sudoku' | 'lettergrid'
 export interface LettergridOpening {
   readonly day: CalendarDay
   readonly error: string | null
+  /** Replaying a solved day for practice: nothing is saved or counted. */
+  readonly practice?: boolean
+}
+
+/** Whose finished board the board sheet shows, and the sheet to go back to when it closes. */
+export interface LettergridBoardView {
+  readonly day: CalendarDay
+  readonly from: Sheet | null
 }
 
 export interface Snapshot {
@@ -34,6 +42,7 @@ export interface Snapshot {
   readonly tab: Tab
   readonly lettergrid: LettergridSession | null
   readonly lettergridOpening: LettergridOpening | null
+  readonly lettergridBoard: LettergridBoardView | null
   readonly today: CalendarDay
   readonly sync: SyncStatus
 }
@@ -50,6 +59,7 @@ export class AppController {
   private tab: Tab = 'sudoku'
   private lettergrid: LettergridSession | null = null
   private lettergridOpening: LettergridOpening | null = null
+  private lettergridBoard: LettergridBoardView | null = null
   /** Bumped whenever an opening is started or abandoned, so a slow Word List load can tell it is stale. */
   private openToken = 0
   private today: CalendarDay
@@ -83,6 +93,7 @@ export class AppController {
       tab: this.tab,
       lettergrid: this.lettergrid,
       lettergridOpening: this.lettergridOpening,
+      lettergridBoard: this.lettergridBoard,
       today: this.today,
       sync: this.sync.getStatus(),
     }
@@ -113,7 +124,19 @@ export class AppController {
 
   openSheet(sheet: Sheet | null): void {
     this.sheet = sheet
+    if (sheet !== 'lettergridBoard') this.lettergridBoard = null
     this.changed()
+  }
+
+  /** Shows a solved day's final board, replayable Play by Play. Closing it goes back to the sheet it came from. */
+  openLettergridBoard(day: CalendarDay): void {
+    this.lettergridBoard = { day, from: this.sheet === 'lettergridBoard' ? (this.lettergridBoard?.from ?? null) : this.sheet }
+    this.sheet = 'lettergridBoard'
+    this.changed()
+  }
+
+  closeLettergridBoard(): void {
+    this.openSheet(this.lettergridBoard?.from ?? null)
   }
 
   setTab(tab: Tab): void {
@@ -188,12 +211,34 @@ export class AppController {
     this.openLettergridDay(this.today)
   }
 
-  /** Tries again after the Word List failed to load. */
-  retryLettergridOpening(): void {
-    if (this.lettergridOpening?.error) this.openLettergridDay(this.lettergridOpening.day)
+  /**
+   * Plays a solved day again from its start, for practice. The day's counted solve never changes: the replay is
+   * not saved, not synced and not recorded. A day not yet solved opens normally instead.
+   */
+  practiceLettergridDay(day: CalendarDay): void {
+    this.refreshToday()
+    if (day > this.today) return
+    if (this.profile.lettergridSolve(day) === null) return this.openLettergridDay(day)
+    this.leaveGame()
+    this.session = null
+    this.sheet = null
+    this.dropLettergrid()
+    const token = this.openToken
+    this.lettergridOpening = { day, error: null, practice: true }
+    this.changed()
+    void this.finishOpening(day, 'practice', token)
   }
 
-  private async finishOpening(day: CalendarDay, opened: LettergridSaved | 'needsGame', token: number): Promise<void> {
+  /** Tries again after the Word List failed to load. */
+  retryLettergridOpening(): void {
+    const opening = this.lettergridOpening
+    if (!opening?.error) return
+    if (opening.practice) this.practiceLettergridDay(opening.day)
+    else this.openLettergridDay(opening.day)
+  }
+
+  private async finishOpening(day: CalendarDay, opened: LettergridSaved | 'needsGame' | 'practice', token: number): Promise<void> {
+    if (opened === 'practice') return this.finishPractice(day, token)
     let words: WordList
     try {
       words = await this.loadWords(opened === 'needsGame' ? wordListVersionFor(day) : opened.state.wordListVersion)
@@ -212,6 +257,23 @@ export class AppController {
       // Solved on another device while the list loaded: nothing to open, so the player goes back Home.
       this.lettergrid = null
     }
+    this.lettergridOpening = null
+    this.changed()
+  }
+
+  private async finishPractice(day: CalendarDay, token: number): Promise<void> {
+    let words: WordList
+    try {
+      words = await this.loadWords(wordListVersionFor(day))
+    } catch {
+      if (token !== this.openToken) return
+      this.lettergridOpening = { day, error: "Couldn't load the Word List. Check your connection and try again.", practice: true }
+      this.changed()
+      return
+    }
+    if (token !== this.openToken) return
+    const saved: LettergridSaved = { id: `practice-${this.openToken}-${this.clock().getTime()}`, startedAt: this.clock().getTime(), state: newGame(lettergridDaily(day, words)) }
+    this.lettergrid = new LettergridSession(day, saved, words, this.profile, () => this.changed(), true)
     this.lettergridOpening = null
     this.changed()
   }

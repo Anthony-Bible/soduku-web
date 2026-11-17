@@ -337,3 +337,10 @@ small { display: block; color: var(--muted); font-size: 0.8125rem; }
 .cal-badge { position: absolute; bottom: 1px; left: 0; right: 0; font-size: 0.5rem; line-height: 1; letter-spacing: -1px; }
 .cal-day.onDay .cal-badge { color: var(--accent-text); }
 .cal-day:has(.cal-badge) { line-height: 1; }
+.lg-replay { display: grid; gap: 8px; margin: 8px 0; }
+.lg-replay-board { container-type: inline-size; width: 100%; display: grid; place-items: center; }
+.lg-replay .lg-board { --size: min(100cqw, 420px, 60vh); }
+.lg-replay-step { text-align: center; margin: 0; }
+.lg-practice { color: var(--orange); font-weight: 700; }
+.lg-cell.last-play { box-shadow: inset 0 0 0 3px var(--orange); }
+.lg-nowrap { white-space: nowrap; padding: 0 14px; }

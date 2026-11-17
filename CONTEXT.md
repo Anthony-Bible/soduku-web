@@ -57,6 +57,14 @@ _Avoid_: Starter word, opening word
 The words Lettergrid accepts, in both American and British spellings; each Lettergrid Daily Puzzle, and its Par, is always judged against the Word List it was published with.
 _Avoid_: Dictionary, lexicon
 
+**Practice**:
+Playing an already solved Lettergrid Daily Puzzle again from its start, on the same Tile Run; it is never saved, synced or counted.
+_Avoid_: Retry, replay, second attempt
+
+**Final Board**:
+The grid a Lettergrid Daily Puzzle was solved with, kept with its counted solve so it can be viewed, and stepped through Play by Play, at any time.
+_Avoid_: End state, final grid
+
 **Par**:
 The score targets published with each Lettergrid Daily Puzzle, worth one to three stars; reaching one never decides whether the puzzle counts as solved.
 _Avoid_: Target, goal, rating
@@ -132,6 +140,7 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 - Ordinary **Games** never affect the **Streak** or the **Calendar**
 - A Sudoku **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
 - A **Lettergrid** **Daily Puzzle** is one attempt: if it is solved more than once, such as on two devices before they sync, only the first solve finished counts for its score, **Par**, **Calendar** and **Statistics**
+- **Practice** never changes a day's score, **Par**, **Calendar**, **Streak** or **Statistics**; only the first solve finished counts
 - **Lettergrid** has no ordinary **Games**: every Lettergrid **Game** is a **Daily Puzzle**, played on its day or as a **Catch-Up Solve**
 - The **Calendar** distinguishes **On-Day Solves** from **Catch-Up Solves**
 - Skill and Milestone **Achievements** count any solved **Game**, ordinary or **Daily Puzzle**; Streak and Calendar **Achievements** count only **Daily Puzzles**
