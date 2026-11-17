@@ -28,9 +28,14 @@ function DayResult({ day }: { day: CalendarDay }) {
         Score {solve.score} · <span aria-label={starsWords(solve.stars)}>{solve.stars > 0 ? starsText(solve.stars) : 'No stars'}</span>
       </p>
       <p className="muted tabular">{playsText(solve.plays)}</p>
-      <button type="button" className="btn" onClick={() => controller.openLettergridDay(day)}>
-        {controller.profile.hasLettergridInProgress(day) ? 'Continue' : 'Play again'}
-      </button>
+      <div className="row-buttons">
+        <button type="button" className="btn grow" onClick={() => controller.openLettergridBoard(day)}>
+          View board
+        </button>
+        <button type="button" className="btn grow" onClick={() => controller.openLettergridDay(day)}>
+          {controller.profile.hasLettergridInProgress(day) ? 'Continue' : 'Play again'}
+        </button>
+      </div>
       {share.button}
       {share.message}
     </section>

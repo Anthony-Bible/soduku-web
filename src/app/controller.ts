@@ -16,7 +16,7 @@ import { LettergridSession } from './lettergridSession'
 import { SyncManager, type SyncStatus } from './sync'
 import { loadWordList } from './wordListLoader'
 
-export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account' | 'lettergridCalendar' | 'lettergridStats'
+export type Sheet = 'picker' | 'stats' | 'achievements' | 'calendar' | 'account' | 'lettergridCalendar' | 'lettergridStats' | 'lettergridBoard'
 
 /** Which game's Home is showing. The app always starts on Sudoku. */
 export type Tab = 'sudoku' | 'lettergrid'
@@ -27,6 +27,12 @@ export interface LettergridOpening {
   readonly error: string | null
 }
 
+/** Whose finished board the board sheet shows, and the sheet to go back to when it closes. */
+export interface LettergridBoardView {
+  readonly day: CalendarDay
+  readonly from: Sheet | null
+}
+
 export interface Snapshot {
   readonly version: number
   readonly session: GameSession | null
@@ -34,6 +40,7 @@ export interface Snapshot {
   readonly tab: Tab
   readonly lettergrid: LettergridSession | null
   readonly lettergridOpening: LettergridOpening | null
+  readonly lettergridBoard: LettergridBoardView | null
   readonly today: CalendarDay
   readonly sync: SyncStatus
 }
@@ -50,6 +57,7 @@ export class AppController {
   private tab: Tab = 'sudoku'
   private lettergrid: LettergridSession | null = null
   private lettergridOpening: LettergridOpening | null = null
+  private lettergridBoard: LettergridBoardView | null = null
   /** Bumped whenever an opening is started or abandoned, so a slow Word List load can tell it is stale. */
   private openToken = 0
   private today: CalendarDay
@@ -83,6 +91,7 @@ export class AppController {
       tab: this.tab,
       lettergrid: this.lettergrid,
       lettergridOpening: this.lettergridOpening,
+      lettergridBoard: this.lettergridBoard,
       today: this.today,
       sync: this.sync.getStatus(),
     }
@@ -113,7 +122,19 @@ export class AppController {
 
   openSheet(sheet: Sheet | null): void {
     this.sheet = sheet
+    if (sheet !== 'lettergridBoard') this.lettergridBoard = null
     this.changed()
+  }
+
+  /** Shows a solved day's Final Board, stepped through Play by Play. Closing it goes back to the sheet it came from. */
+  openLettergridBoard(day: CalendarDay): void {
+    this.lettergridBoard = { day, from: this.sheet === 'lettergridBoard' ? (this.lettergridBoard?.from ?? null) : this.sheet }
+    this.sheet = 'lettergridBoard'
+    this.changed()
+  }
+
+  closeLettergridBoard(): void {
+    this.openSheet(this.lettergridBoard?.from ?? null)
   }
 
   setTab(tab: Tab): void {
@@ -190,7 +211,9 @@ export class AppController {
 
   /** Tries again after the Word List failed to load. */
   retryLettergridOpening(): void {
-    if (this.lettergridOpening?.error) this.openLettergridDay(this.lettergridOpening.day)
+    const opening = this.lettergridOpening
+    if (!opening?.error) return
+    this.openLettergridDay(opening.day)
   }
 
   private async finishOpening(day: CalendarDay, opened: LettergridSaved | 'needsGame', token: number): Promise<void> {

@@ -2,6 +2,7 @@ import type { CalendarDay } from './calendarDay'
 import { buildDailyLog, recordOpen, type DailyLog } from './dailyLog'
 import { CELL_COUNT, GRID_SIZE, PLAYS_PER_DAILY, RACK_SIZE, TILE_RUN_LENGTH } from './lettergrid/grid'
 import type { LettergridResult, LettergridState } from './lettergrid/game'
+import { copyBoard, isLettergridBoard, type LettergridBoard } from './lettergrid/finalBoard'
 import type { LettergridStatistics } from './statistics'
 import {
   clampSlots,
@@ -18,18 +19,20 @@ import {
 import { isInt, isNonNegInt, isObj, isSafeId } from './validate'
 
 // Lettergrid's share of the synced document (ADR 0002, 0004). Like the Sudoku parts it is stored in a form
-// that merges cleanly: openings by min, every solve kept by Game ID, Games in progress last-writer-wins.
+// that merges cleanly: openings by min, each day's best solve by a total order, Games in progress last-writer-wins.
 
 export const MAX_LETTERGRID_DAYS = 20_000
 export const MAX_LETTERGRID_SOLVES = 50_000
 export const MAX_LETTERGRID_SLOTS = 5_000
 
-/** A finished Lettergrid Daily. Every one is kept; only the best-scoring one per day counts (ADR 0004). */
+/** A finished Lettergrid Daily. Only each day's best-scoring one is kept, and it is the one that counts (ADR 0004). */
 export interface LettergridSolve extends LettergridResult {
   readonly gameId: string
   readonly day: CalendarDay
   /** Epoch milliseconds when the last Play was made. */
   readonly finishedAt: number
+  /** The finished board, so it can be viewed and stepped through later. Solves recorded before it was kept have none. */
+  readonly board?: LettergridBoard
 }
 
 /** A Lettergrid Game in progress. It carries its own grid, Tile Run, Par and Word List version. */
@@ -48,7 +51,7 @@ export interface LettergridSlot {
 export interface LettergridProgress {
   /** Daily Puzzle day -> the day it was first opened (earliest wins). */
   readonly firstOpened: Readonly<Record<string, number>>
-  /** Game ID -> its solve. */
+  /** Game ID -> its solve; at most one per day, that day's best. */
   readonly solves: Readonly<Record<string, LettergridSolve>>
   /** 'daily.<day>' -> the Game in progress for that day. */
   readonly slots: Readonly<Record<string, LettergridSlot>>
@@ -64,19 +67,40 @@ export const emptyLettergridProgress = (): LettergridProgress => ({ firstOpened:
 // MARK: Merge
 
 /**
- * One Game finished on two devices keeps its earliest finish. Anything still tied is broken by content, so the
- * pick is the same in any order. (A Game ID belongs to one day; records that disagree on it are corrupt.)
+ * Whether `a` is the better solve of a day: the higher score, then the earlier finished, then the lower Game ID,
+ * then content. It is a total order, so keeping each day's best gives the same result in any merge order.
  */
-function pickSolve(a: LettergridSolve, b: LettergridSolve): LettergridSolve {
-  // After a sync both sides usually hold the same record; skip the content tie-break for it.
+const beats = (a: LettergridSolve, b: LettergridSolve): boolean =>
+  a.score !== b.score
+    ? a.score > b.score
+    : a.finishedAt !== b.finishedAt
+      ? a.finishedAt < b.finishedAt
+      : a.gameId !== b.gameId
+        ? a.gameId < b.gameId
+        : stableStringify(a) < stableStringify(b)
+
+/** Keeps only each day's best solve (ADR 0004). */
+function keepBest(solves: Iterable<LettergridSolve>): Record<string, LettergridSolve> {
+  const best = new Map<CalendarDay, LettergridSolve>()
+  for (const s of solves) {
+    const b = best.get(s.day)
+    if (!b || beats(s, b)) best.set(s.day, s)
+  }
+  const out: Record<string, LettergridSolve> = {}
+  for (const s of best.values()) out[s.gameId] = s
+  return out
+}
+
+function mergeSolves(a: Readonly<Record<string, LettergridSolve>>, b: Readonly<Record<string, LettergridSolve>>): Record<string, LettergridSolve> {
+  // After a sync both sides usually hold the same records.
   if (a === b) return a
-  return a.finishedAt !== b.finishedAt ? (a.finishedAt < b.finishedAt ? a : b) : stableStringify(a) <= stableStringify(b) ? a : b
+  return keepBest(Object.values(unionMap(a, b, (x, y) => (x === y || beats(x, y) ? x : y))))
 }
 
 export function mergeLettergridProgress(a: LettergridProgress, b: LettergridProgress): LettergridProgress {
   return {
     firstOpened: unionMap(a.firstOpened, b.firstOpened, (x, y) => (x <= y ? x : y)),
-    solves: unionMap(a.solves, b.solves, pickSolve),
+    solves: mergeSolves(a.solves, b.solves),
     slots: unionMap(a.slots, b.slots, mergeSlots),
     clock: Math.max(a.clock, b.clock),
   }
@@ -98,14 +122,7 @@ export function clampLettergrid(p: LettergridProgress, maxTime: number): Letterg
 
 // MARK: Derived data
 
-const beats = (a: LettergridSolve, b: LettergridSolve): boolean =>
-  a.score !== b.score ? a.score > b.score : a.finishedAt !== b.finishedAt ? a.finishedAt < b.finishedAt : a.gameId < b.gameId
-
-/**
- * The solve that counts for each day: the highest score, then the earliest finished, then the lower Game ID,
- * so every device picks the same one in any merge order (ADR 0004).
- */
-
+/** The solve that counts for each day: its best, the only one kept (ADR 0004). */
 export function countedSolves(p: LettergridProgress): Map<CalendarDay, LettergridSolve> {
   const counted = new Map<CalendarDay, LettergridSolve>()
   for (const s of Object.values(p.solves)) {
@@ -128,7 +145,10 @@ export function deriveLettergridStatistics(p: LettergridProgress, counted = coun
   return { dailiesPlayed: counted.size, bestScore, parReached }
 }
 
-/** Whether a Game has a recorded solve. Solves are permanent, so this only ever becomes true. */
+/**
+ * Whether a Game has a recorded solve. A day keeps only its best solve, so a lower Replay's is dropped; its slot
+ * is cleared when it finishes, which keeps it from coming back (ADR 0004).
+ */
 export const isLettergridFinished = (p: LettergridProgress, gameId: string): boolean => Object.hasOwn(p.solves, gameId)
 
 /** The Game that can be continued from a day's slot. A slot whose Game is already solved counts as cleared. */
@@ -140,10 +160,9 @@ export const liveLettergridSlot = (p: LettergridProgress, day: CalendarDay): (Le
 /** Records the first opening of a day. A future day is ignored; the earliest opening is kept. */
 export const openLettergridDay = (p: LettergridProgress, day: CalendarDay, today: CalendarDay): LettergridProgress => recordOpen(p, day, today)
 
-/** Keeps a solve. Several can exist for a day; `countedSolves` picks the one that counts. */
+/** Keeps a solve if it is its day's best; a lower one is dropped (ADR 0004). */
 export function addLettergridSolve(p: LettergridProgress, s: LettergridSolve): LettergridProgress {
-  const existing = p.solves[s.gameId]
-  return { ...p, solves: { ...p.solves, [s.gameId]: existing ? pickSolve(existing, s) : s } }
+  return { ...p, solves: mergeSolves(p.solves, { [s.gameId]: s }) }
 }
 
 /** Writes a day's slot, unless it holds something newer. `null` leaves a cleared marker. A solved Game never comes back. */
@@ -219,7 +238,9 @@ function parseSolve(id: string, v: unknown): LettergridSolve | null {
   if (v.stars !== 0 && v.stars !== 1 && v.stars !== 2 && v.stars !== 3) return null
   if (!Array.isArray(v.plays) || v.plays.length !== PLAYS_PER_DAILY || !v.plays.every((p) => p === null || isNonNegInt(p))) return null
   if ((v.plays as (number | null)[]).reduce<number>((n, p) => n + (p ?? 0), 0) !== v.score) return null
-  return { gameId: id, day: v.day, finishedAt: v.finishedAt, score: v.score, stars: v.stars, plays: [...(v.plays as (number | null)[])] }
+  if (v.board !== undefined && !isLettergridBoard(v.board)) return null
+  const solve: LettergridSolve = { gameId: id, day: v.day, finishedAt: v.finishedAt, score: v.score, stars: v.stars, plays: [...(v.plays as (number | null)[])] }
+  return v.board === undefined ? solve : { ...solve, board: copyBoard(v.board) }
 }
 
 /** Returns a clean copy of an untrusted value if it is well-formed Lettergrid progress, else null. */
@@ -238,6 +259,8 @@ export function parseLettergridProgress(raw: unknown): LettergridProgress | null
     if (!solve) return null
     solves[id] = solve
   }
+  // Documents from before ADR 0004's storage rule can hold several solves for a day.
+  const best = keepBest(Object.values(solves))
   const slots: Record<string, LettergridSlot> = {}
   for (const [k, s] of Object.entries(raw.slots)) {
     if (!isInt(dailySlotDay(k)) || !isObj(s) || !finite(s.updatedAt)) return null
@@ -248,5 +271,5 @@ export function parseLettergridProgress(raw: unknown): LettergridProgress | null
   // Progress from before the clock existed has none; the slots' own writes stand in for it.
   const clock = raw.clock === undefined ? 0 : raw.clock
   if (!finite(clock) || clock < 0) return null
-  return { firstOpened, solves, slots, clock }
+  return { firstOpened, solves: best, slots, clock }
 }

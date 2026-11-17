@@ -10,6 +10,7 @@ import type { Position } from './position'
 import { randomId } from './id'
 import type { SaveStore } from './saveStore'
 import { isFinished as isLettergridDone, resultOf, type LettergridState } from './lettergrid/game'
+import { boardOf } from './lettergrid/finalBoard'
 import {
   addLettergridSolve,
   countedSolves,
@@ -185,16 +186,6 @@ export class PlayerProfile {
     return this.countedLettergrid(day)
   }
 
-  /** The best score among a day's other solves (the ones before a just-finished Replay), or null if there are none. */
-  lettergridBestOtherScore(day: CalendarDay, gameId: string): number | null {
-    this.reload()
-    let best: number | null = null
-    for (const s of Object.values(this.doc.lettergrid.solves)) {
-      if (s.day === day && s.gameId !== gameId && (best === null || s.score > best)) best = s.score
-    }
-    return best
-  }
-
   /** The counted solve for a day in the document as loaded; callers reload first. */
   private countedLettergrid(day: CalendarDay): LettergridSolve | null {
     return this.view.lettergridCounted.get(day) ?? null
@@ -240,11 +231,11 @@ export class PlayerProfile {
     return liveLettergridSlot(this.doc.lettergrid, day) !== null
   }
 
-  /** Records a finished Lettergrid Daily. Every solve is kept; the best-scoring counts. */
+  /** Records a finished Lettergrid Daily. Only the day's best-scoring solve is kept (ADR 0004). */
   private recordLettergridSolve(day: CalendarDay, saved: LettergridSaved): void {
     this.reload()
     if (this.doc.lettergrid.solves[saved.id]) return
-    const solve: LettergridSolve = { gameId: saved.id, day, finishedAt: this.now(), ...resultOf(saved.state) }
+    const solve: LettergridSolve = { gameId: saved.id, day, finishedAt: this.now(), ...resultOf(saved.state), board: boardOf(saved.state) }
     this.update((doc) => {
       const lettergrid = addLettergridSolve(doc.lettergrid, solve)
       return { ...doc, lettergrid: setLettergridSlot(lettergrid, day, null, this.now()) }

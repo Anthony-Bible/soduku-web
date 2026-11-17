@@ -20,6 +20,11 @@ export type { LettergridResult }
  */
 export class LettergridSession {
   private saved: LettergridSaved
+  /**
+   * The day's best score before this Game, or null for a first solve. Lower solves aren't kept (ADR 0004), so it
+   * is read now: once this Game is finished the day keeps only one of the two.
+   */
+  readonly bestBefore: number | null
 
   constructor(
     readonly day: CalendarDay,
@@ -29,6 +34,8 @@ export class LettergridSession {
     private readonly onChange: () => void,
   ) {
     this.saved = saved
+    const best = profile.lettergridSolve(day)
+    this.bestBefore = best === null || best.gameId === saved.id ? null : best.score
   }
 
   get gameId(): string {

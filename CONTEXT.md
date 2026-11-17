@@ -61,6 +61,10 @@ _Avoid_: Starter word, opening word
 The words Lettergrid accepts, in both American and British spellings; each Lettergrid Daily Puzzle, and its Par, is always judged against the Word List it was published with.
 _Avoid_: Dictionary, lexicon
 
+**Final Board**:
+The grid a Lettergrid Daily Puzzle was solved with, kept with the day's counted (best) solve so it can be viewed, and stepped through Play by Play, at any time. A **Replay** that beats the day's best replaces it, board and all.
+_Avoid_: End state, final grid, replay (that is playing the day again)
+
 **Par**:
 The score targets published with each Lettergrid Daily Puzzle, worth one to three stars; reaching one never decides whether the puzzle counts as solved.
 _Avoid_: Target, goal, rating

@@ -10,8 +10,18 @@ import { lettergridShareText } from './share'
 import { useFocusTrap } from './useFocusTrap'
 import { useShareText } from './useShare'
 
+interface Props {
+  session: LettergridSession
+  result: LettergridResult
+  onHome: () => void
+  /** Puts the overlay away to show the final board. */
+  onViewBoard: () => void
+  /** Replays the day from the start; its best-scoring solve counts. */
+  onPlayAgain: () => void
+}
+
 /** Shown once the last Play is made. A Lettergrid Daily is solved whatever the score; the stars are extra. */
-export function LettergridFinish({ session, result, onHome, onReplay }: { session: LettergridSession; result: LettergridResult; onHome: () => void; onReplay: () => void }) {
+export function LettergridFinish({ session, result, onHome, onViewBoard, onPlayAgain }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   useFocusTrap(ref)
   const reduceMotion = usePrefersReducedMotion()
@@ -19,8 +29,7 @@ export function LettergridFinish({ session, result, onHome, onReplay }: { sessio
   const streak = session.day === today ? controller.profile.lettergridStreak(today) : 0
   // The day's counted (best) solve is what counts and what Share shows; this Game may be a lower Replay.
   const best = controller.profile.lettergridSolve(session.day) ?? { ...result }
-  const before = controller.profile.lettergridBestOtherScore(session.day, session.gameId)
-  const newBest = before !== null && result.score > before
+  const newBest = session.bestBefore !== null && result.score > session.bestBefore
   const share = useShareText((url) =>
     lettergridShareText({ day: session.day, plays: best.plays, score: best.score, stars: best.stars, streak, url }),
   )
@@ -46,7 +55,10 @@ export function LettergridFinish({ session, result, onHome, onReplay }: { sessio
         </div>
         <div className="col-buttons">
           {share.button}
-          <button type="button" className="btn" onClick={onReplay}>
+          <button type="button" className="btn" onClick={onViewBoard}>
+            View board
+          </button>
+          <button type="button" className="btn" onClick={onPlayAgain}>
             Play again
           </button>
           <button type="button" className="btn btn-primary" onClick={onHome} autoFocus>

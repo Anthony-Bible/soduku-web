@@ -136,6 +136,8 @@ function Game({ session }: { session: LettergridSession }) {
   const [dir, setDir] = useState<Direction>('across')
   const [message, setMessage] = useState<{ text: string; bad: boolean } | null>(null)
   const [confirmSwap, setConfirmSwap] = useState(false)
+  /** The finish overlay can be put away to look at the final board. */
+  const [showResult, setShowResult] = useState(true)
   const boardRef = useRef<HTMLDivElement>(null)
 
   const result = session.result
@@ -294,7 +296,9 @@ function Game({ session }: { session: LettergridSession }) {
     <main className="game lg-game">
       <header className="lg-header">
         <button type="button" className="btn-text" onClick={() => controller.goHome()}>Home</button>
-        <span className="game-title">Lettergrid · {shortTitle(session.day)}</span>
+        <span className="game-title">
+          Lettergrid · {shortTitle(session.day)}
+        </span>
         <span className="game-mistakes">
           <span aria-hidden="true">Plays left: <strong className="tabular">{left}</strong></span>
           <span className="sr-only">{`${left} of ${PLAYS_PER_DAILY} Plays remaining`}</span>
@@ -354,17 +358,31 @@ function Game({ session }: { session: LettergridSession }) {
           )
         })}
       </div>
-      <div className="row-buttons lg-actions">
-        <button type="button" className="btn" disabled={staged.length === 0 || finished} onClick={recallAll}>
-          <Icon name="undo" size={18} /> Recall
-        </button>
-        <button type="button" className="btn" disabled={finished} onClick={() => setConfirmSwap(true)}>
-          Swap
-        </button>
-        <button type="button" className="btn btn-primary grow" disabled={staged.length === 0 || finished} onClick={submit}>
-          Submit Play
-        </button>
-      </div>
+      {finished ? (
+        <div className="row-buttons lg-actions">
+          <button type="button" className="btn" onClick={() => setShowResult(true)}>
+            Result
+          </button>
+          <button type="button" className="btn" onClick={() => controller.openLettergridDay(session.day)}>
+            Play again
+          </button>
+          <button type="button" className="btn btn-primary grow" onClick={() => controller.goHome()}>
+            Home
+          </button>
+        </div>
+      ) : (
+        <div className="row-buttons lg-actions">
+          <button type="button" className="btn" disabled={staged.length === 0 || finished} onClick={recallAll}>
+            <Icon name="undo" size={18} /> Recall
+          </button>
+          <button type="button" className="btn" disabled={finished} onClick={() => setConfirmSwap(true)}>
+            Swap
+          </button>
+          <button type="button" className="btn btn-primary grow" disabled={staged.length === 0 || finished} onClick={submit}>
+            Submit Play
+          </button>
+        </div>
+      )}
       {confirmSwap && (
         <ConfirmDialog
           title="Swap your Rack?"
@@ -374,7 +392,15 @@ function Game({ session }: { session: LettergridSession }) {
           onConfirm={swap}
         />
       )}
-      {result && sheet === null && <LettergridFinish session={session} result={result} onHome={() => controller.goHome()} onReplay={() => controller.openLettergridDay(session.day)} />}
+      {result && showResult && sheet === null && (
+        <LettergridFinish
+          session={session}
+          result={result}
+          onHome={() => controller.goHome()}
+          onViewBoard={() => setShowResult(false)}
+          onPlayAgain={() => controller.openLettergridDay(session.day)}
+        />
+      )}
     </main>
   )
 }

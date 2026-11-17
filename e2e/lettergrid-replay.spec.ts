@@ -153,3 +153,32 @@ test('a Replay left part-way is offered as Continue, survives a reload, and resu
     await expect(board.locator(`[data-p="${t.row * 9 + t.col}"]`)).toHaveAccessibleName(new RegExp(`${t.letter.toUpperCase()}, \\d+ points?, played$`))
   }
 })
+
+test('the Final Board shown is the best solve\'s, and a Replay after viewing a board still ends on its result', async ({ page }) => {
+  const daily = dailyCard(page)
+  const best = scriptFor(TODAY)
+
+  await daily.getByRole('button', { name: 'Play', exact: true }).click()
+  await playOpenDaily(page, best)
+
+  // Put the result away to look at the finished board, then replay from the row under it.
+  await finishDialog(page).getByRole('button', { name: 'View board' }).click()
+  await expect(finishDialog(page)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Play again' }).click()
+  await playOpenDaily(page, swapScript())
+  // The Replay's own result comes back up, though the last Game's was put away.
+  const finish = finishDialog(page)
+  await expect(finish.getByText('Score 0', { exact: true })).toBeVisible()
+  await expect(finish.getByText(`Best ${best.score}`, { exact: true })).toBeVisible()
+  await finish.getByRole('button', { name: 'Home' }).click()
+
+  // Home's board is still the best solve's, not the lower Replay's seed-only board.
+  await daily.getByRole('button', { name: 'View board' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Lettergrid Board' })
+  await expect(sheet.getByText(new RegExp(`^Score ${best.score}`))).toBeVisible()
+  const board = sheet.getByRole('img', { name: `Lettergrid board after 6 of 6 Plays` })
+  const finalTiles = await board.locator('.lg-cell.tile').count()
+  await sheet.getByRole('button', { name: 'First: the opening grid' }).click()
+  await expect(sheet.getByRole('status')).toContainText('Start: the Seed Word')
+  expect(await sheet.locator('.lg-cell.tile').count()).toBeLessThan(finalTiles)
+})
