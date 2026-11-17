@@ -24,7 +24,7 @@ A value entered into a cell that differs from the solution. Counted, never fatal
 _Avoid_: Strike, life, error
 
 **Statistics**:
-Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played (a Lettergrid Daily Puzzle counts as played only once it is solved), the best score and how many times each Par was reached.
+Totals counted across every device of an Account and never reset: for Sudoku, the Games played and won and the best winning time for each difficulty; for Lettergrid, the Daily Puzzles played (a Lettergrid Daily Puzzle counts as played only once it is solved, and once however many Replays it has), the best score and how many times each Par was reached, each day judged by its best-scoring solve.
 _Avoid_: Stats, scores, records
 
 ### Daily
@@ -32,6 +32,10 @@ _Avoid_: Stats, scores, records
 **Daily Puzzle**:
 The one puzzle a game assigns to a calendar day, identical every time it is opened; Sudoku's difficulty is set by weekday (Mon–Tue Easy, Wed–Thu Medium, Fri–Sat Hard, Sun Expert). A Lettergrid Daily Puzzle is solved once all of its plays are made, whatever the score.
 _Avoid_: Puzzle of the day, daily challenge
+
+**Replay**:
+Playing a solved Lettergrid Daily Puzzle again from the start, with the same Seed Word, Tile Run and Par; any day already solved, today or past, can be replayed any number of times.
+_Avoid_: Retry, redo, practice
 
 **Tile Run**:
 The fixed sequence of letters a Lettergrid Daily Puzzle deals from, in the same order for every player; the Rack refills from it in order.
@@ -131,7 +135,8 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 - A **Streak** counts only **On-Day Solves**; a **Catch-Up Solve** never extends or repairs one
 - Ordinary **Games** never affect the **Streak** or the **Calendar**
 - A Sudoku **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
-- A **Lettergrid** **Daily Puzzle** is one attempt: if it is solved more than once, such as on two devices before they sync, only the first solve finished counts for its score, **Par**, **Calendar** and **Statistics**
+- A **Lettergrid** **Daily Puzzle** can be solved many times, by **Replays** or on two devices before they sync; its best-scoring solve counts for its score, **Par** and **Statistics**, and the earliest finished wins a tie
+- A **Replay** never changes the **Calendar** or the **Streak**: the day is already solved, and whether that is an **On-Day Solve** or a **Catch-Up Solve** depends only on when the day was first opened
 - **Lettergrid** has no ordinary **Games**: every Lettergrid **Game** is a **Daily Puzzle**, played on its day or as a **Catch-Up Solve**
 - The **Calendar** distinguishes **On-Day Solves** from **Catch-Up Solves**
 - Skill and Milestone **Achievements** count any solved **Game**, ordinary or **Daily Puzzle**; Streak and Calendar **Achievements** count only **Daily Puzzles**
@@ -151,4 +156,5 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 
 - "Scrabble" was used to mean a second game — resolved: it is **Lettergrid**, an original word-tile game, not a copy of Scrabble.
 - Whether a Lettergrid **Daily Puzzle** counts as played in **Statistics** once opened or only once solved — resolved: only once solved.
+- Whether a Lettergrid **Daily Puzzle** is one attempt — resolved: no, it can be replayed, and its best-scoring solve counts (ADR 0004 supersedes ADR 0003).
 - "track daily" was used to mean a daily puzzle, a streak and a calendar — resolved: all three exist, and they are separate terms (**Daily Puzzle**, **Streak**, **Calendar**).

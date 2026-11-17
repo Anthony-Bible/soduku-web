@@ -76,7 +76,7 @@ export interface SyncDoc {
    * Keyed by a migration id, merged by max, so two copies of the same migration never double count.
    */
   readonly legacySolves: Readonly<Record<string, number>>
-  /** Lettergrid's own Daily log, Game-in-progress slots and solves (ADR 0003). Sudoku data never reads it. */
+  /** Lettergrid's own Daily log, Game-in-progress slots and solves (ADR 0004). Sudoku data never reads it. */
   readonly lettergrid: LettergridProgress
 }
 

@@ -17,14 +17,14 @@ import {
 } from './stable'
 import { isInt, isNonNegInt, isObj, isSafeId } from './validate'
 
-// Lettergrid's share of the synced document (ADR 0002, 0003). Like the Sudoku parts it is stored in a form
+// Lettergrid's share of the synced document (ADR 0002, 0004). Like the Sudoku parts it is stored in a form
 // that merges cleanly: openings by min, every solve kept by Game ID, Games in progress last-writer-wins.
 
 export const MAX_LETTERGRID_DAYS = 20_000
 export const MAX_LETTERGRID_SOLVES = 50_000
 export const MAX_LETTERGRID_SLOTS = 5_000
 
-/** A finished Lettergrid Daily. Every one is kept; only the earliest finished per day counts. */
+/** A finished Lettergrid Daily. Every one is kept; only the best-scoring one per day counts (ADR 0004). */
 export interface LettergridSolve extends LettergridResult {
   readonly gameId: string
   readonly day: CalendarDay
@@ -85,12 +85,11 @@ export function mergeLettergridProgress(a: LettergridProgress, b: LettergridProg
 /** Newest slot write or recorded clock. Only Lettergrid slots are pruned against it. */
 export const lettergridClock = (p: LettergridProgress): number => newestSlotWrite(p.slots, p.clock)
 
-/** Drops slots that can no longer matter: a solved day never reopens, and a stale slot is forgotten. */
+/** Drops stale slots. A solved day's slot stays: a Replay can be in progress (ADR 0004). */
 export function normalizeLettergridProgress(p: LettergridProgress, retentionMs: number): LettergridProgress {
   const clock = lettergridClock(p)
   const cutoff = clock - retentionMs
-  const solvedDays = new Set(Object.values(p.solves).map((s) => s.day))
-  return { ...p, slots: pruneSlots(p.slots, cutoff, (day) => solvedDays.has(day)), clock }
+  return { ...p, slots: pruneSlots(p.slots, cutoff, () => false), clock }
 }
 
 export function clampLettergrid(p: LettergridProgress, maxTime: number): LettergridProgress {
@@ -99,15 +98,19 @@ export function clampLettergrid(p: LettergridProgress, maxTime: number): Letterg
 
 // MARK: Derived data
 
+const beats = (a: LettergridSolve, b: LettergridSolve): boolean =>
+  a.score !== b.score ? a.score > b.score : a.finishedAt !== b.finishedAt ? a.finishedAt < b.finishedAt : a.gameId < b.gameId
+
 /**
- * The solve that counts for each day: the earliest finished, then the lower Game ID, so every device picks
- * the same one in any merge order.
+ * The solve that counts for each day: the highest score, then the earliest finished, then the lower Game ID,
+ * so every device picks the same one in any merge order (ADR 0004).
  */
+
 export function countedSolves(p: LettergridProgress): Map<CalendarDay, LettergridSolve> {
   const counted = new Map<CalendarDay, LettergridSolve>()
   for (const s of Object.values(p.solves)) {
     const best = counted.get(s.day)
-    if (!best || s.finishedAt < best.finishedAt || (s.finishedAt === best.finishedAt && s.gameId < best.gameId)) counted.set(s.day, s)
+    if (!best || beats(s, best)) counted.set(s.day, s)
   }
   return counted
 }

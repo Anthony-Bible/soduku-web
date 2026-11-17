@@ -126,7 +126,7 @@ describe('Home tabs', () => {
 })
 
 describe('Lettergrid Daily card', () => {
-  it('goes from Play to Continue to Solved, with the Streak and Score', async () => {
+  it('goes from Play to Continue to Play again, with the Streak and Score', async () => {
     const u = user()
     const c = setup()
     await openTab(u)
@@ -147,8 +147,7 @@ describe('Lettergrid Daily card', () => {
     expect(screen.getByText('5 of 6 Plays remaining')).toBeTruthy()
     finish(c)
     await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
-    const solved = screen.getByRole('button', { name: 'Solved' })
-    expect(solved).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Play again' })).toBeEnabled()
     expect(within(screen.getByLabelText('Lettergrid Daily Puzzle')).getByText(/^Score \d+/)).toBeTruthy()
     expect(within(screen.getByLabelText('Lettergrid Daily Puzzle')).getByText('Streak 1 day')).toBeTruthy()
   })
@@ -374,6 +373,39 @@ describe('Lettergrid Calendar', () => {
     expect(c.profile.lettergridLog.firstOpened[today() - 2]).toBe(today())
     finish(c)
     expect(c.profile.lettergridLog.solves[today() - 2]).toBe('catchUp')
+  })
+
+  it('replays a solved day from the card and the Calendar, and the finish shows the best', async () => {
+    const u = user()
+    const c = setup()
+    await playLettergrid(u)
+    finish(c)
+    const first = c.profile.lettergridSolve(today())!
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
+
+    // Replay from the card: a fresh game on the same day; six Swaps score 0, lower than the first.
+    await u.click(screen.getByRole('button', { name: 'Play again' }))
+    await screen.findByRole('group', { name: 'Lettergrid board' })
+    expect(screen.getByText('6 of 6 Plays remaining')).toBeTruthy()
+    for (let i = 0; i < 6; i++) act(() => void lettergrid(c).swap())
+    const dialog = await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })
+    expect(within(dialog).getByText(`Best ${first.score}`)).toBeTruthy()
+    expect(c.profile.lettergridSolve(today())).toEqual(first)
+
+    // The finish offers Play again, which opens yet another fresh game.
+    await u.click(within(dialog).getByRole('button', { name: 'Play again' }))
+    await screen.findByRole('group', { name: 'Lettergrid board' })
+    act(() => void lettergrid(c).swap())
+    await u.click(screen.getByRole('button', { name: 'Home' }))
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+
+    // The Calendar's result offers it too.
+    await u.click(screen.getByRole('button', { name: 'Calendar' }))
+    const sheet = screen.getByRole('dialog', { name: 'Lettergrid Calendar' })
+    await u.click(within(sheet).getByRole('button', { name: /November 3, 2026, solved on the day/ }))
+    await u.click(within(sheet).getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('group', { name: 'Lettergrid board' })
+    expect(screen.getByText('5 of 6 Plays remaining')).toBeTruthy()
   })
 
   it('does not open a future day, and Sudoku\'s Calendar and Streak stay untouched', async () => {

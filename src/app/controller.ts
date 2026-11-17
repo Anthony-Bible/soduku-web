@@ -204,14 +204,8 @@ export class AppController {
       return
     }
     if (token !== this.openToken) return
-    try {
-      const saved =
-        opened === 'needsGame' ? this.profile.startLettergridDaily(newGame(lettergridDaily(day, words)), day) : opened
-      this.lettergrid = new LettergridSession(day, saved, words, this.profile, () => this.changed())
-    } catch {
-      // Solved on another device while the list loaded: nothing to open, so the player goes back Home.
-      this.lettergrid = null
-    }
+    const saved = opened === 'needsGame' ? this.profile.startLettergridDaily(newGame(lettergridDaily(day, words)), day) : opened
+    this.lettergrid = new LettergridSession(day, saved, words, this.profile, () => this.changed())
     this.lettergridOpening = null
     this.changed()
   }

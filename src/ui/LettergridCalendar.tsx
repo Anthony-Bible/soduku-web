@@ -28,13 +28,16 @@ function DayResult({ day }: { day: CalendarDay }) {
         Score {solve.score} · <span aria-label={starsWords(solve.stars)}>{solve.stars > 0 ? starsText(solve.stars) : 'No stars'}</span>
       </p>
       <p className="muted tabular">{playsText(solve.plays)}</p>
+      <button type="button" className="btn" onClick={() => controller.openLettergridDay(day)}>
+        {controller.profile.hasLettergridInProgress(day) ? 'Continue' : 'Play again'}
+      </button>
       {share.button}
       {share.message}
     </section>
   )
 }
 
-/** Lettergrid's own Calendar: On-Day and Catch-Up Solves with stars; an unsolved past day opens its puzzle. */
+/** Lettergrid's own Calendar: On-Day and Catch-Up Solves with stars; an unsolved past day opens its puzzle, and a solved day can be replayed. */
 export function LettergridCalendarSheet() {
   const { controller, today } = useApp()
   const profile = controller.profile

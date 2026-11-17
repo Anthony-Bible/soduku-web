@@ -20,6 +20,7 @@ import {
   deriveLettergridStatistics,
   emptyLettergridProgress,
   liveLettergridSlot,
+  normalizeLettergridProgress,
   openLettergridDay,
   parseLettergridProgress,
   setLettergridSlot,
@@ -145,7 +146,7 @@ describe('Lettergrid progress merges like the rest of the document', () => {
       }),
     ))
 
-  test('the counted solve is always the earliest finished, ties going to the lower Game ID', () =>
+  test('the counted solve has the top score, ties going to the earliest finish then the lower Game ID', () =>
     fc.assert(
       fc.property(arbProgress, arbProgress, (a, b) => {
         const m = mergeDocs(withLetter(a), withLetter(b)).lettergrid
@@ -157,13 +158,48 @@ describe('Lettergrid progress merges like the rest of the document', () => {
             expect(got).toBeUndefined()
             continue
           }
-          const expected = [...all].sort((p, q) => p.finishedAt - q.finishedAt || (p.gameId < q.gameId ? -1 : 1))[0]
+          const expected = [...all].sort((p, q) => q.score - p.score || p.finishedAt - q.finishedAt || (p.gameId < q.gameId ? -1 : 1))[0]
           expect(got).toEqual(expected)
         }
         // Merge order never changes which solve counts.
         expect(countedSolves(mergeDocs(withLetter(b), withLetter(a)).lettergrid)).toEqual(counted)
       }),
     ))
+
+  test('the counted solve per day is the best, whatever order the solves arrive in', () => {
+    const arbSolves = fc.uniqueArray(
+      fc.record({
+        gameId: fc.string({ minLength: 1, maxLength: 3 }),
+        day: fc.constantFrom(1, 2, 3),
+        finishedAt: fc.integer({ min: 0, max: 4 }),
+        score: fc.integer({ min: 0, max: 4 }),
+      }),
+      { selector: (s) => s.gameId, maxLength: 12 },
+    ).chain((list) => fc.tuple(fc.constant(list), fc.shuffledSubarray(list, { minLength: list.length, maxLength: list.length })))
+    fc.assert(
+      fc.property(arbSolves, ([raw, order]) => {
+        const solves: LettergridSolve[] = raw.map((s) => ({ ...s, stars: 0, plays: [s.score, null, null, null, null, null] }))
+        const build = (list: LettergridSolve[]) => list.reduce(addLettergridSolve, emptyLettergridProgress())
+        const counted = countedSolves(build(solves))
+        for (const day of [1, 2, 3]) {
+          const all = solves.filter((s) => s.day === day)
+          const got = counted.get(day)
+          if (all.length === 0) {
+            expect(got).toBeUndefined()
+            continue
+          }
+          const top = Math.max(...all.map((s) => s.score))
+          expect(got!.score).toBe(top)
+          for (const s of all.filter((x) => x.score === top)) {
+            expect(got!.finishedAt <= s.finishedAt).toBe(true)
+            if (got!.finishedAt === s.finishedAt) expect(got!.gameId <= s.gameId).toBe(true)
+          }
+        }
+        const reordered = order.map((o) => solves.find((s) => s.gameId === o.gameId)!)
+        expect(countedSolves(build(reordered))).toEqual(counted)
+      }),
+    )
+  })
 
   test('a Daily counts as played only once it is solved, however often days are opened', () =>
     fc.assert(
@@ -175,18 +211,21 @@ describe('Lettergrid progress merges like the rest of the document', () => {
       }),
     ))
 
-  test('a later solve of a day never changes its score, Par stars or the Statistics', () => {
+  test('a later, higher solve of a day replaces its score, Par stars and Statistics', () => {
     const early: LettergridSolve = { gameId: 'z', day: 100, finishedAt: 1, score: 50, stars: 1, plays: [50] }
     const late: LettergridSolve = { gameId: 'a', day: 100, finishedAt: 2, score: 200, stars: 3, plays: [200] }
     let p = openLettergridDay(emptyLettergridProgress(), 100, 100)
     p = addLettergridSolve(addLettergridSolve(p, early), late)
-    expect(countedSolves(p).get(100)).toEqual(early)
-    expect(deriveLettergridStatistics(p)).toEqual({ dailiesPlayed: 1, bestScore: 50, parReached: [1, 0, 0] })
+    expect(countedSolves(p).get(100)).toEqual(late)
+    expect(deriveLettergridStatistics(p)).toEqual({ dailiesPlayed: 1, bestScore: 200, parReached: [1, 1, 1] })
+    // A later, lower one changes nothing.
+    const lower: LettergridSolve = { gameId: 'm', day: 100, finishedAt: 9, score: 3, stars: 0, plays: [3] }
+    expect(countedSolves(addLettergridSolve(p, lower)).get(100)).toEqual(late)
   })
 
-  test('equal finish times go to the lower Game ID', () => {
+  test('equal scores and finish times go to the lower Game ID', () => {
     const a: LettergridSolve = { gameId: 'a', day: 100, finishedAt: 5, score: 10, stars: 0, plays: [] }
-    const b: LettergridSolve = { gameId: 'b', day: 100, finishedAt: 5, score: 99, stars: 3, plays: [] }
+    const b: LettergridSolve = { gameId: 'b', day: 100, finishedAt: 5, score: 10, stars: 0, plays: [] }
     expect(countedSolves(addLettergridSolve(addLettergridSolve(emptyLettergridProgress(), b), a)).get(100)?.gameId).toBe('a')
   })
 
@@ -325,7 +364,7 @@ describe('PlayerProfile Lettergrid Dailies', () => {
     return new PlayerProfile(new SaveStore(kv), () => clock.t, () => `id${++n}`)
   }
 
-  test('open, resume, finish and count only the first finished solve', () => {
+  test('open, resume and finish a Daily', () => {
     const clock = { t: 1_000 }
     const profile = make(clock)
     expect(profile.openLettergridDaily(100, 100)).toBe('needsGame')
@@ -345,12 +384,96 @@ describe('PlayerProfile Lettergrid Dailies', () => {
     profile.saveLettergrid(100, { ...saved, state })
     expect(profile.lettergridSolve(100)).toMatchObject({ gameId: saved.id, finishedAt: 2_000, score: 0, plays: [null, null, null, null, null, null] })
     expect(profile.hasLettergridInProgress(100)).toBe(false)
-    expect(profile.openLettergridDaily(100, 100)).toBeNull()
     expect(profile.lettergridStreak(100)).toBe(1)
     expect(profile.lettergridStatistics).toEqual({ dailiesPlayed: 1, bestScore: 0, parReached: [0, 0, 0] })
     // Sudoku is untouched.
     expect(profile.dailyLog).toEqual({ firstOpened: {}, solves: {} })
     expect(profile.currentStreak(100)).toBe(0)
     expect(profile.statistics.easy.played).toBe(0)
+  })
+
+  describe('Replay (ADR 0004)', () => {
+    const finishWith = (saved: LettergridSaved, plays: number): LettergridSaved => {
+      // Swaps score nothing; a state with a fixed score is faked by overriding the recorded plays.
+      let state = saved.state
+      for (let i = 0; i < PLAYS_PER_DAILY; i++) {
+        const r = applyAction(state, { type: 'swap' }, { version: 1, isWord: () => false } as never)
+        if (!r.ok) throw new Error(r.reason)
+        state = r.state
+      }
+      const scored = { ...state, plays: state.plays.map((p, i) => (i === 0 && p.kind === 'swap' ? { ...p, score: plays } : p)) } as LettergridState
+      return { ...saved, state: scored }
+    }
+    const solveDay100 = (profile: PlayerProfile, _clock: { t: number }, score: number): void => {
+      const opened = profile.openLettergridDaily(100, 100)
+      const saved = opened === 'needsGame' ? profile.startLettergridDaily(baseState(), 100) : (opened as LettergridSaved)
+      profile.saveLettergrid(100, finishWith(saved, score))
+    }
+
+    test('a solved day reopens as a fresh game; a future day still does not', () => {
+      const clock = { t: 1_000 }
+      const profile = make(clock)
+      solveDay100(profile, clock, 0)
+      expect(profile.openLettergridDaily(100, 100)).toBe('needsGame')
+      expect(profile.openLettergridDaily(101, 100)).toBeNull()
+      const replay = profile.startLettergridDaily(baseState(), 100)
+      expect(replay.id).not.toBe(profile.lettergridSolve(100)!.gameId)
+      expect(profile.hasLettergridInProgress(100)).toBe(true)
+      expect(profile.startLettergridDaily(baseState(), 100).id).toBe(replay.id)
+    })
+
+    test('a lower Replay changes nothing counted; a higher one replaces it', () => {
+      const clock = { t: 1_000 }
+      const profile = make(clock)
+      solveDay100(profile, clock, 0)
+      const first = profile.lettergridSolve(100)!
+      const stats = profile.lettergridStatistics
+      clock.t = 2_000
+      // A Replay that finishes with the same score (0) does not displace the earlier finish.
+      solveDay100(profile, clock, 0)
+      expect(profile.lettergridSolve(100)).toEqual(first)
+      expect(profile.lettergridStatistics).toEqual(stats)
+      expect(profile.hasLettergridInProgress(100)).toBe(false)
+
+      clock.t = 3_000
+      solveDay100(profile, clock, 5)
+      expect(profile.lettergridSolve(100)).toMatchObject({ score: 5, finishedAt: 3_000 })
+      expect(profile.lettergridStatistics.bestScore).toBe(5)
+      expect(profile.lettergridStatistics.dailiesPlayed).toBe(1)
+
+      clock.t = 4_000
+      solveDay100(profile, clock, 2)
+      expect(profile.lettergridSolve(100)).toMatchObject({ score: 5 })
+      expect(profile.lettergridBestOtherScore(100, profile.lettergridSolve(100)!.gameId)).toBe(2)
+    })
+
+    test('a Replay days later leaves the Streak, the Calendar kind and Daily count alone', () => {
+      const clock = { t: 1_000 }
+      const profile = make(clock)
+      solveDay100(profile, clock, 0)
+      const log = profile.lettergridLog
+      const streak = profile.lettergridStreak(100)
+      clock.t = 9_000_000
+      solveDay100(profile, clock, 7)
+      expect(profile.lettergridLog).toEqual(log)
+      expect(profile.lettergridLog.solves[100]).toBe('onDay')
+      expect(profile.lettergridStreak(100)).toBe(streak)
+      expect(profile.lettergridStreak(105)).toBe(0) // later days never extend it
+      expect(profile.lettergridStatistics.dailiesPlayed).toBe(1)
+    })
+
+    test('a Replay in progress survives normalizing, and a finished one is cleared', () => {
+      const clock = { t: 1_000 }
+      const kv = new MemoryStore()
+      const profile = make(clock, kv)
+      solveDay100(profile, clock, 0)
+      const replay = profile.startLettergridDaily(baseState(), 100)
+      expect(make(clock, kv).hasLettergridInProgress(100)).toBe(true)
+      expect(make(clock, kv).openLettergridDaily(100, 100)).toMatchObject({ id: replay.id })
+      const p = (profile as unknown as { doc: SyncDoc }).doc.lettergrid
+      expect(liveLettergridSlot(normalizeLettergridProgress(p, DAY_MS), 100)?.game.id).toBe(replay.id)
+      profile.saveLettergrid(100, finishWith(replay, 0))
+      expect(profile.hasLettergridInProgress(100)).toBe(false)
+    })
   })
 })

@@ -11,14 +11,18 @@ import { useFocusTrap } from './useFocusTrap'
 import { useShareText } from './useShare'
 
 /** Shown once the last Play is made. A Lettergrid Daily is solved whatever the score; the stars are extra. */
-export function LettergridFinish({ session, result, onHome }: { session: LettergridSession; result: LettergridResult; onHome: () => void }) {
+export function LettergridFinish({ session, result, onHome, onReplay }: { session: LettergridSession; result: LettergridResult; onHome: () => void; onReplay: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   useFocusTrap(ref)
   const reduceMotion = usePrefersReducedMotion()
   const { controller, today } = useApp()
   const streak = session.day === today ? controller.profile.lettergridStreak(today) : 0
+  // The day's counted (best) solve is what counts and what Share shows; this Game may be a lower Replay.
+  const best = controller.profile.lettergridSolve(session.day) ?? { ...result }
+  const before = controller.profile.lettergridBestOtherScore(session.day, session.gameId)
+  const newBest = before !== null && result.score > before
   const share = useShareText((url) =>
-    lettergridShareText({ day: session.day, plays: result.plays, score: result.score, stars: result.stars, streak, url }),
+    lettergridShareText({ day: session.day, plays: best.plays, score: best.score, stars: best.stars, streak, url }),
   )
   const tiers: readonly number[] = session.state.par.tiers
   const nextTier: number | undefined = tiers[result.stars]
@@ -31,6 +35,8 @@ export function LettergridFinish({ session, result, onHome }: { session: Letterg
         <div className="muted win-details">
           <div>Lettergrid · {shortTitle(session.day)}</div>
           <div className="tabular">Score {result.score}</div>
+          {best.score > result.score && <div className="tabular">Best {best.score}</div>}
+          {newBest && <div>New best!</div>}
           <div className="lg-stars" aria-label={starsWords(result.stars)}>
             {[1, 2, 3].map((n) => (
               <span key={n} className={n <= result.stars ? 'on' : 'off'} aria-hidden="true">★</span>
@@ -40,6 +46,9 @@ export function LettergridFinish({ session, result, onHome }: { session: Letterg
         </div>
         <div className="col-buttons">
           {share.button}
+          <button type="button" className="btn" onClick={onReplay}>
+            Play again
+          </button>
           <button type="button" className="btn btn-primary" onClick={onHome} autoFocus>
             Home
           </button>

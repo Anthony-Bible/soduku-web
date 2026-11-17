@@ -10,6 +10,7 @@ import {
   type PlayRecord,
   type WordList,
 } from '../src/core/lettergrid'
+import { PLAYS_PER_DAILY } from '../src/core/lettergrid/grid'
 
 /** The fixed local "now" of the Lettergrid specs: mid-month, so the Calendar has past days to catch up on. */
 export const NOW = new Date(2026, 5, 15, 12, 0, 0)
@@ -37,11 +38,24 @@ export function scriptFor(day: CalendarDay): DailyScript {
   return { plays: solved.plays, score: solved.score, stars: starsFor(solved.score, daily.par) }
 }
 
+/** Spends every Play on a Swap: a legal finish on any day that scores nothing and reaches no Par. */
+export const swapScript = (): DailyScript => ({
+  plays: Array.from({ length: PLAYS_PER_DAILY }, (): PlayRecord => ({ kind: 'swap', score: 0, tiles: [] })),
+  score: 0,
+  stars: 0,
+})
+
 /** Plays the open Lettergrid Daily the way a player would: tap a square, tap a Rack tile, Submit Play. */
 export async function playOpenDaily(page: Page, script: DailyScript): Promise<void> {
+  await makePlays(page, script.plays)
+  await expect(page.getByRole('dialog', { name: 'Daily Puzzle Solved!' })).toBeVisible()
+}
+
+/** Makes Plays in the open Lettergrid Daily without expecting it to finish. */
+export async function makePlays(page: Page, plays: readonly PlayRecord[]): Promise<void> {
   const board = page.getByRole('group', { name: 'Lettergrid board' })
   await expect(board).toBeVisible()
-  for (const play of script.plays) {
+  for (const play of plays) {
     if (play.kind === 'swap') {
       await page.getByRole('button', { name: 'Swap', exact: true }).click()
       await page.getByRole('alertdialog', { name: 'Swap your Rack?' }).getByRole('button', { name: 'Swap', exact: true }).click()
@@ -57,7 +71,6 @@ export async function playOpenDaily(page: Page, script: DailyScript): Promise<vo
     }
     await page.getByRole('button', { name: 'Submit Play' }).click()
   }
-  await expect(page.getByRole('dialog', { name: 'Daily Puzzle Solved!' })).toBeVisible()
 }
 
 /** The text a Lettergrid result is shared as, without the closing URL line. */

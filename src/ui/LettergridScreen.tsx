@@ -374,7 +374,7 @@ function Game({ session }: { session: LettergridSession }) {
           onConfirm={swap}
         />
       )}
-      {result && sheet === null && <LettergridFinish session={session} result={result} onHome={() => controller.goHome()} />}
+      {result && sheet === null && <LettergridFinish session={session} result={result} onHome={() => controller.goHome()} onReplay={() => controller.openLettergridDay(session.day)} />}
     </main>
   )
 }
