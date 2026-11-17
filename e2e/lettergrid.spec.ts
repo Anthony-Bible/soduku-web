@@ -45,7 +45,8 @@ test('a Lettergrid Daily is played to the end, shared, and starts a Streak witho
 
   // The Lettergrid dot is gone and its Streak is 1; Sudoku is untouched.
   await expect(lettergridTab).not.toContainText("today's Daily Puzzle unsolved")
-  await expect(daily.getByRole('button', { name: /Solved/ })).toBeDisabled()
+  await expect(daily.getByRole('button', { name: 'View board' })).toBeEnabled()
+  await expect(daily.getByRole('button', { name: 'Play again' })).toBeEnabled()
   await expect(daily.getByText('Streak 1 day')).toBeAttached()
   await expect(daily.getByText(`Score ${script.score}`)).toBeVisible()
   await expect(sudokuTab).toContainText("today's Daily Puzzle unsolved")
@@ -70,7 +71,8 @@ test('a Lettergrid Daily is played to the end, shared, and starts a Streak witho
   await expect(lettergridTab).not.toContainText("today's Daily Puzzle unsolved")
   await lettergridTab.click()
   await expect(daily.getByText('Streak 1 day')).toBeAttached()
-  await expect(daily.getByRole('button', { name: /Solved/ })).toBeDisabled()
+  await expect(daily.getByRole('button', { name: 'View board' })).toBeEnabled()
+  await expect(daily.getByRole('button', { name: 'Play again' })).toBeEnabled()
 })
 
 test('a Catch-Up Solve from the Lettergrid Calendar does not extend the Streak', async ({ page }) => {

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0004
 ---
 
 # A Lettergrid Daily Puzzle counts its first finished solve, against a frozen Word List

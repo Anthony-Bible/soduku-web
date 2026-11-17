@@ -75,7 +75,7 @@ export function clampSlots<S extends AnySlot>(slots: Readonly<Record<string, S>>
 
 /**
  * Drops slots that can no longer matter: one untouched since before `cutoff`, and a daily slot whose day is
- * solved (a solved day never reopens). Both only become more true as documents merge, so pruning commutes with merging.
+ * solved, when the caller says so (Sudoku does; Lettergrid can Replay). Both only become more true as documents merge, so pruning commutes with merging.
  */
 export function pruneSlots<S extends AnySlot>(slots: Readonly<Record<string, S>>, cutoff: number, solvedDay: (day: number) => boolean): Record<string, S> {
   const out: Record<string, S> = {}

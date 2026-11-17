@@ -21,8 +21,8 @@ export function winRatePercent(s: DifficultyStats): number {
 }
 
 /**
- * Lettergrid's Statistics, counted from its Daily log: only the counted solve of each day (the earliest
- * finished, ADR 0003) contributes. `parReached[i]` is how many counted solves reached Par tier i+1 (one to
+ * Lettergrid's Statistics, counted from its Daily log: only the counted solve of each day (the best
+ * scoring, ADR 0004) contributes. `parReached[i]` is how many counted solves reached Par tier i+1 (one to
  * three stars), so a three-star solve counts toward all three.
  */
 export interface LettergridStatistics {
