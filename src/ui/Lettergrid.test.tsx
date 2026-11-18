@@ -476,7 +476,7 @@ describe('Lettergrid Final Board', () => {
     await u.click(screen.getByRole('button', { name: /Tuesday, November 3, 2026, solved/ }))
     await u.click(screen.getByRole('button', { name: 'View board' }))
     const sheet = screen.getByRole('dialog', { name: 'Lettergrid Board' })
-    const board = within(sheet).getByRole('img', { name: 'Lettergrid board after 6 of 6 Plays' })
+    const board = within(sheet).getByRole('group', { name: 'Lettergrid board after 6 of 6 Plays' })
     const letters = () => board.querySelectorAll('.lg-cell.tile').length
     expect(letters()).toBe(finalGrid.filter(Boolean).length)
     await u.click(within(sheet).getByRole('button', { name: 'First: the opening grid' }))
@@ -489,6 +489,60 @@ describe('Lettergrid Final Board', () => {
     // Done goes back to the Calendar it came from.
     await u.click(within(sheet).getByRole('button', { name: 'Done' }))
     expect(screen.getByRole('dialog', { name: 'Lettergrid Calendar' })).toBeTruthy()
+  })
+
+  async function solvedBoardFromCalendar(u: ReturnType<typeof userEvent.setup>) {
+    const c = setup()
+    await playLettergrid(u)
+    finish(c)
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
+    await u.click(screen.getByRole('button', { name: 'Calendar' }))
+    const calendar = screen.getByRole('dialog', { name: 'Lettergrid Calendar' })
+    await u.click(within(calendar).getByRole('button', { name: /Tuesday, November 3, 2026, solved/ }))
+    await u.click(within(calendar).getByRole('button', { name: 'View board' }))
+    return c
+  }
+  const back = () => act(() => void window.dispatchEvent(new PopStateEvent('popstate')))
+
+  it('Back from a board opened over the Calendar returns to the Calendar, then closes it', async () => {
+    const u = user()
+    await solvedBoardFromCalendar(u)
+    expect(screen.getByRole('dialog', { name: 'Lettergrid Board' })).toBeTruthy()
+    back()
+    expect(screen.queryByRole('dialog', { name: 'Lettergrid Board' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Lettergrid Calendar' })).toBeTruthy()
+    back()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('Done from a board over the Calendar keeps Back consistent', async () => {
+    const u = user()
+    await solvedBoardFromCalendar(u)
+    await u.click(within(screen.getByRole('dialog', { name: 'Lettergrid Board' })).getByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('dialog', { name: 'Lettergrid Calendar' })).toBeTruthy()
+    await waitFor(() => expect(window.history.state).toMatchObject({ sudokuLevel: 1 }))
+  })
+
+  it('labels every cell for screen readers, following the step', async () => {
+    const u = user()
+    const c = setup()
+    await playLettergrid(u)
+    finish(c)
+    const placed = lettergrid(c).state.plays[0].tiles
+    await u.click(within(await screen.findByRole('dialog', { name: 'Daily Puzzle Solved!' })).getByRole('button', { name: 'Home' }))
+    await u.click(screen.getByRole('button', { name: 'View board' }))
+    const board = screen.getByRole('group', { name: 'Lettergrid board after 6 of 6 Plays' })
+    const cellAt = (row: number, col: number) => board.querySelector(`[data-p="${row * 9 + col}"]`)!
+    const first = placed[0]
+    const labelAt = () => cellAt(first.row, first.col).getAttribute('aria-label')
+    const where = `Row ${first.row + 1}, column ${first.col + 1}`
+    // Played on Play 1, so it is a plain played tile at the end.
+    expect(labelAt()).toMatch(new RegExp(`^${where}, ${first.letter.toUpperCase()}, \\d+ points?, played$`))
+    await u.click(screen.getByRole('button', { name: 'First: the opening grid' }))
+    expect(labelAt()).toMatch(new RegExp(`^${where}, empty`))
+    expect(board.querySelectorAll('[aria-label$="Seed Word"]').length).toBeGreaterThan(0)
+    await u.click(screen.getByRole('button', { name: 'Next' }))
+    expect(labelAt()).toMatch(new RegExp(`^${where}, ${first.letter.toUpperCase()}, \\d+ points?, placed this Play$`))
   })
 
   it('shows the best solve\'s board: a higher Replay replaces it, a lower one is not kept', async () => {
@@ -527,6 +581,6 @@ describe('Lettergrid Final Board', () => {
     await u.click(screen.getByRole('button', { name: 'View board' }))
     const sheet = screen.getByRole('dialog', { name: 'Lettergrid Board' })
     expect(within(sheet).getByText(new RegExp(`^Score ${higher.score}`))).toBeTruthy()
-    expect(within(sheet).getByRole('img', { name: 'Lettergrid board after 6 of 6 Plays' }).querySelectorAll('.lg-cell.tile')).toHaveLength(grid)
+    expect(within(sheet).getByRole('group', { name: 'Lettergrid board after 6 of 6 Plays' }).querySelectorAll('.lg-cell.tile')).toHaveLength(grid)
   })
 })

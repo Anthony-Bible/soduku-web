@@ -13,11 +13,13 @@ import { LettergridScreen } from './LettergridScreen'
 import { StatsSheet } from './Stats'
 
 export function App() {
-  const { session, lettergrid, lettergridOpening, sheet, controller } = useApp()
+  const { session, lettergrid, lettergridOpening, sheet, lettergridBoard, controller } = useApp()
   const inLettergrid = lettergrid !== null || lettergridOpening !== null
   // Home's abandon dialog counts as a navigation level so Back closes it instead of leaving the app.
   const [homeDialog, setHomeDialog] = useState(false)
-  useBackNavigation(controller, (session || inLettergrid ? 1 : 0) + (sheet ? 1 : 0) + (!session && !inLettergrid && homeDialog ? 1 : 0))
+  useBackNavigation(controller, (session || inLettergrid ? 1 : 0) + (sheet ? 1 : 0) +
+      // A Final Board opened over another sheet gets its own entry, so Back returns to that sheet.
+      (sheet === 'lettergridBoard' && lettergridBoard?.from ? 1 : 0) + (!session && !inLettergrid && homeDialog ? 1 : 0))
   return (
     <>
       {session ? (

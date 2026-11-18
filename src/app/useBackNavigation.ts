@@ -43,7 +43,8 @@ export function useBackNavigation(controller: AppController, level: number): voi
       }
       pushed.current--
       const { sheet } = controller.getSnapshot()
-      if (sheet) controller.openSheet(null)
+      if (sheet === 'lettergridBoard') controller.closeLettergridBoard()
+      else if (sheet) controller.openSheet(null)
       else controller.goHome()
     }
     window.addEventListener('popstate', onPop)

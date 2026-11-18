@@ -8,13 +8,10 @@ import {
   letterValuesFor,
   rowOf,
   wordListVersionFor,
-  type Bonus,
   type LettergridBoard,
 } from '../core/lettergrid'
 import { Sheet } from './Sheet'
-import { starsText, starsWords } from './format'
-
-const BONUS_SHORT: Record<Exclude<Bonus, null>, string> = { L2: 'L×2', L3: 'L×3', W2: 'W×2', W3: 'W×3' }
+import { BONUS_TEXT, starsText, starsWords } from './format'
 
 /** Words for what Play `step` (1-based) did, from the per-Play scores; null is a Swap. */
 function stepText(step: number, plays: readonly (number | null)[]): string {
@@ -35,7 +32,7 @@ export function BoardSteps({ board, plays, wordListVersion }: { board: Lettergri
   return (
     <div className="lg-steps">
       <div className="lg-steps-board">
-        <div className="lg-board" role="img" aria-label={`Lettergrid board after ${step} of ${PLAYS_PER_DAILY} Plays`}>
+        <div className="lg-board" role="group" aria-label={`Lettergrid board after ${step} of ${PLAYS_PER_DAILY} Plays`}>
           {frame.grid.map((letter, cell) => {
             const bonus = frame.bonuses[cell]
             const classes = ['lg-cell']
@@ -43,15 +40,23 @@ export function BoardSteps({ board, plays, wordListVersion }: { board: Lettergri
             if (letter !== null) classes.push('tile')
             if (frame.seedCells.has(cell)) classes.push('seed')
             if (frame.placed.has(cell)) classes.push('last-play')
+            const where = `Row ${rowOf(cell) + 1}, column ${colOf(cell) + 1}`
+            let label: string
+            if (letter === null) label = bonus ? `${where}, empty, ${BONUS_TEXT[bonus].words}` : `${where}, empty`
+            else {
+              const value = values[letter] ?? 0
+              const what = frame.placed.has(cell) ? 'placed this Play' : frame.seedCells.has(cell) ? 'Seed Word' : 'played'
+              label = `${where}, ${letter.toUpperCase()}, ${value} ${value === 1 ? 'point' : 'points'}, ${what}`
+            }
             return (
-              <div key={cell} className={classes.join(' ')} data-p={cell} title={`Row ${rowOf(cell) + 1}, column ${colOf(cell) + 1}`}>
+              <div key={cell} className={classes.join(' ')} data-p={cell} role="img" aria-label={label}>
                 {letter !== null ? (
                   <>
-                    <span className="lg-letter">{letter.toUpperCase()}</span>
-                    <span className="lg-value">{values[letter] ?? 0}</span>
+                    <span className="lg-letter" aria-hidden="true">{letter.toUpperCase()}</span>
+                    <span className="lg-value" aria-hidden="true">{values[letter] ?? 0}</span>
                   </>
                 ) : bonus ? (
-                  <span className="lg-bonus">{BONUS_SHORT[bonus]}</span>
+                  <span className="lg-bonus" aria-hidden="true">{BONUS_TEXT[bonus].short}</span>
                 ) : null}
               </div>
             )

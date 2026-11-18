@@ -238,9 +238,9 @@ function parseSolve(id: string, v: unknown): LettergridSolve | null {
   if (v.stars !== 0 && v.stars !== 1 && v.stars !== 2 && v.stars !== 3) return null
   if (!Array.isArray(v.plays) || v.plays.length !== PLAYS_PER_DAILY || !v.plays.every((p) => p === null || isNonNegInt(p))) return null
   if ((v.plays as (number | null)[]).reduce<number>((n, p) => n + (p ?? 0), 0) !== v.score) return null
-  if (v.board !== undefined && !isLettergridBoard(v.board)) return null
   const solve: LettergridSolve = { gameId: id, day: v.day, finishedAt: v.finishedAt, score: v.score, stars: v.stars, plays: [...(v.plays as (number | null)[])] }
-  return v.board === undefined ? solve : { ...solve, board: copyBoard(v.board) }
+  // A malformed board costs only the board, never the solve or the whole document.
+  return isLettergridBoard(v.board) ? { ...solve, board: copyBoard(v.board) } : solve
 }
 
 /** Returns a clean copy of an untrusted value if it is well-formed Lettergrid progress, else null. */
