@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { dayFromDate, type CalendarDay } from '../src/core'
 import {
   lettergridDaily,
@@ -78,4 +78,40 @@ export function expectedShareLines(script: DailyScript, shortTitle: string): str
   const stars = '★'.repeat(script.stars)
   const line = `${script.plays.map((p) => (p.kind === 'swap' ? '↺' : String(p.score))).join(' · ')} = ${script.score}${stars ? ` ${stars}` : ''}`
   return [`Lettergrid · Daily Puzzle ${shortTitle}`, line]
+}
+
+/** The squares the Seed Word sits on for `day`. */
+export function seedCellsFor(day: CalendarDay): number[] {
+  return newGame(lettergridDaily(day, wordList())).seedCells
+}
+
+async function centre(target: Locator): Promise<{ x: number; y: number }> {
+  const box = await target.boundingBox()
+  if (!box) throw new Error('drag target is not visible')
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+/**
+ * Drags from the centre of `from` to the centre of `to` in small steps, with a mouse or a finger. Touch
+ * goes through the Chrome DevTools Protocol, since Playwright's touchscreen can only tap.
+ */
+export async function dragTile(page: Page, from: Locator, to: Locator, input: 'mouse' | 'touch' = 'mouse'): Promise<void> {
+  const a = await centre(from)
+  const b = await centre(to)
+  const steps = 8
+  const at = (i: number) => ({ x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps })
+  if (input === 'mouse') {
+    await page.mouse.move(a.x, a.y)
+    await page.mouse.down()
+    await page.mouse.move(b.x, b.y, { steps })
+    await page.mouse.up()
+    return
+  }
+  const cdp = await page.context().newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', p?: { x: number; y: number }) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: p ? [{ x: p.x, y: p.y }] : [] })
+  await touch('touchStart', a)
+  for (let i = 1; i <= steps; i++) await touch('touchMove', at(i))
+  await touch('touchEnd')
+  await cdp.detach()
 }

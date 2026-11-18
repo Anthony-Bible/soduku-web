@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { shortTitle } from '../core'
 import { useApp } from '../app/AppContext'
 import type { LettergridSession } from '../app/lettergridSession'
@@ -56,6 +57,23 @@ interface Staged {
   rack: number
 }
 
+/** Where a dragged tile came from: a Rack tile not yet placed, or a tile placed this Play. */
+type DragSource = { kind: 'rack'; rack: number } | { kind: 'cell'; cell: number; rack: number }
+
+interface Drag {
+  source: DragSource
+  letter: string
+  x: number
+  y: number
+  /** The square under the pointer, if it is on the board. */
+  over: number | null
+  /** One square's width in px, so the dragged tile matches the board. */
+  size: number
+}
+
+/** How far (px) a press must move before it is a drag rather than a tap. */
+const DRAG_THRESHOLD = 8
+
 interface CellProps {
   cell: number
   letter: string | null
@@ -65,8 +83,11 @@ interface CellProps {
   staged: boolean
   cursor: boolean
   tabbable: boolean
+  dragging: boolean
+  dropTarget: boolean
   onTap: (cell: number) => void
   onFocusCell: (cell: number) => void
+  onDragStart: (e: ReactPointerEvent, cell: number) => void
 }
 
 function cellLabel({ cell, letter, value, bonus, seed, staged }: CellProps): string {
@@ -77,15 +98,26 @@ function cellLabel({ cell, letter, value, bonus, seed, staged }: CellProps): str
 }
 
 function CellView(props: CellProps) {
-  const { cell, letter, value, bonus, seed, staged, cursor, tabbable, onTap, onFocusCell } = props
+  const { cell, letter, value, bonus, seed, staged, cursor, tabbable, dragging, dropTarget, onTap, onFocusCell, onDragStart } = props
   const classes = ['lg-cell']
   if (bonus) classes.push(`bonus-${bonus}`)
   if (letter !== null) classes.push('tile')
   if (seed) classes.push('seed')
   if (staged) classes.push('staged')
   if (cursor) classes.push('cursor')
+  if (dragging) classes.push('dragging')
+  if (dropTarget) classes.push('drop-target')
   return (
-    <button type="button" className={classes.join(' ')} data-p={cell} tabIndex={tabbable ? 0 : -1} aria-label={cellLabel(props)} onFocus={() => onFocusCell(cell)} onClick={() => onTap(cell)}>
+    <button
+      type="button"
+      className={classes.join(' ')}
+      data-p={cell}
+      tabIndex={tabbable ? 0 : -1}
+      aria-label={cellLabel(props)}
+      onFocus={() => onFocusCell(cell)}
+      onClick={() => onTap(cell)}
+      onPointerDown={staged ? (e) => onDragStart(e, cell) : undefined}
+    >
       {letter !== null ? (
         <>
           <span className="lg-letter" aria-hidden="true">{letter.toUpperCase()}</span>
@@ -132,6 +164,13 @@ function Game({ session }: { session: LettergridSession }) {
   /** The finish overlay can be put away to look at the final board. */
   const [showResult, setShowResult] = useState(true)
   const boardRef = useRef<HTMLDivElement>(null)
+  const [drag, setDrag] = useState<Drag | null>(null)
+  /** Set for the click that follows a drop, so a drag never also counts as a tap. */
+  const suppressClick = useRef(false)
+  /** Cancels the press or drag under way: nothing is dropped, though its release still isn't a tap. */
+  const cancelDragRef = useRef<(() => void) | null>(null)
+  /** Forgets the press or drag under way entirely (the game is going away). */
+  const stopDragRef = useRef<(() => void) | null>(null)
 
   const result = session.result
   const finished = result !== null
@@ -170,6 +209,7 @@ function Game({ session }: { session: LettergridSession }) {
   }
 
   const tapCell = (cell: number) => {
+    if (suppressClick.current) return
     setCursor(cell)
     if (stagedAt.has(cell)) return recall(cell)
     if (state.grid[cell] !== null) return
@@ -179,6 +219,7 @@ function Game({ session }: { session: LettergridSession }) {
     }
   }
   const tapRack = (i: number) => {
+    if (suppressClick.current) return
     if (stagedRack.has(i)) {
       const at = staged.find((s) => s.rack === i)
       if (at) recall(at.cell)
@@ -229,12 +270,88 @@ function Game({ session }: { session: LettergridSession }) {
     say('Swapped your Rack.')
   }
 
+  /**
+   * A drop on an empty square, or on a tile placed this Play (which goes back to the Rack), places the
+   * tile there. Anywhere else, a Rack tile goes home and a placed tile goes back to the Rack.
+   */
+  const drop = (source: DragSource, over: number | null) => {
+    const target = over !== null && state.grid[over] === null ? over : null
+    if (target === null) {
+      if (source.kind === 'cell') recall(source.cell)
+      return
+    }
+    if (source.kind === 'cell' && source.cell === target) return
+    put(source.rack, target)
+    setSelectedRack(null)
+    setCursor(target)
+  }
+
+  const cellUnder = (x: number, y: number): number | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-p]')
+    return el && boardRef.current?.contains(el) ? Number(el.dataset.p) : null
+  }
+
+  const startDrag = (e: ReactPointerEvent, source: DragSource) => {
+    if (blocked || !e.isPrimary || e.button !== 0) return
+    stopDragRef.current?.()
+    const letter = state.rack[source.rack]
+    const size = boardRef.current?.querySelector('[data-p]')?.getBoundingClientRect().width ?? 40
+    const { clientX: sx, clientY: sy, pointerId: id } = e
+    let active = false
+    let cancelled = false
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id || cancelled) return
+      if (!active && Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_THRESHOLD) return
+      active = true
+      ev.preventDefault()
+      setDrag({ source, letter, x: ev.clientX, y: ev.clientY, over: cellUnder(ev.clientX, ev.clientY), size })
+    }
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      stop()
+      if (!active && !cancelled) return
+      setDrag(null)
+      suppressClick.current = true
+      setTimeout(() => { suppressClick.current = false }, 0)
+      if (ev.type === 'pointerup' && !cancelled) dropRef.current(source, cellUnder(ev.clientX, ev.clientY))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      cancelDragRef.current = null
+      stopDragRef.current = null
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    cancelDragRef.current = () => {
+      cancelled = true
+      setDrag(null)
+    }
+    stopDragRef.current = stop
+  }
+  const startCellDrag = (e: ReactPointerEvent, cell: number) => {
+    const rack = stagedAt.get(cell)
+    if (rack !== undefined) startDrag(e, { kind: 'cell', cell, rack })
+  }
+
   const submitRef = useRef(submit)
   const typeRef = useRef(typeLetter)
+  const dropRef = useRef(drop)
   useEffect(() => {
     submitRef.current = submit
     typeRef.current = typeLetter
+    dropRef.current = drop
   })
+  // A drag in progress is forgotten if the game goes away, and cancelled if the game is blocked (a sheet, a
+  // dialog, the finish) or anything else changes the Rack or the placed tiles under it (a Play submitted
+  // with Enter, a recall from the keyboard): its source would no longer be the tile being dragged.
+  useEffect(() => () => stopDragRef.current?.(), [])
+  useEffect(() => {
+    if (blocked) cancelDragRef.current?.()
+  }, [blocked])
+  useEffect(() => () => cancelDragRef.current?.(), [state.rack, staged])
   const moveCursor = useCallback((d: Direction, delta: number) => {
     setCursor((cur) => {
       const from = cur ?? cellIndex(CENTRE, CENTRE)
@@ -323,8 +440,11 @@ function Game({ session }: { session: LettergridSession }) {
                 staged={stagedAt.has(cell)}
                 cursor={cursor === cell}
                 tabbable={tabbable === cell}
+                dragging={drag?.source.kind === 'cell' && drag.source.cell === cell}
+                dropTarget={drag !== null && drag.over === cell && state.grid[cell] === null}
                 onTap={tapCell}
                 onFocusCell={setCursor}
+                onDragStart={startCellDrag}
               />
             )
           })}
@@ -339,11 +459,12 @@ function Game({ session }: { session: LettergridSession }) {
             <button
               key={i}
               type="button"
-              className={`rack-tile${used ? ' used' : ''}${selectedRack === i ? ' selected' : ''}`}
+              className={`rack-tile${used ? ' used' : ''}${selectedRack === i ? ' selected' : ''}${drag?.source.kind === 'rack' && drag.source.rack === i ? ' dragging' : ''}`}
               aria-label={used ? `Rack tile ${letter.toUpperCase()}, on the grid, tap to take back` : `Rack tile ${letter.toUpperCase()}, ${values[letter]} ${values[letter] === 1 ? 'point' : 'points'}`}
               aria-pressed={used ? undefined : selectedRack === i}
               disabled={finished}
               onClick={() => tapRack(i)}
+              onPointerDown={used ? undefined : (e) => startDrag(e, { kind: 'rack', rack: i })}
             >
               <span className="lg-letter" aria-hidden="true">{letter.toUpperCase()}</span>
               <span className="lg-value" aria-hidden="true">{values[letter]}</span>
@@ -376,6 +497,18 @@ function Game({ session }: { session: LettergridSession }) {
           </button>
         </div>
       )}
+      {drag &&
+        createPortal(
+          <div
+            className="lg-drag-tile"
+            aria-hidden="true"
+            style={{ left: drag.x, top: drag.y, '--size': `${drag.size * 9}px` } as CSSProperties}
+          >
+            <span className="lg-letter">{drag.letter.toUpperCase()}</span>
+            <span className="lg-value">{values[drag.letter]}</span>
+          </div>,
+          document.body,
+        )}
       {confirmSwap && (
         <ConfirmDialog
           title="Swap your Rack?"
