@@ -98,6 +98,60 @@ test('a short press is still a tap: two taps place a tile and nothing is dragged
   await expect(square(page, a)).toHaveAccessibleName(emptyLabel)
 })
 
+/** Presses on `from` and moves onto `to` without letting go, so a drag is under way. */
+async function holdOver(page: Page, from: ReturnType<typeof square>, to: ReturnType<typeof square>) {
+  const a = (await from.boundingBox())!
+  const b = (await to.boundingBox())!
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 })
+}
+
+test('a drag under way is dropped when the keyboard recalls its tile', async ({ page }) => {
+  const [a, b] = freeSquares()
+  const letter = firstPlay().tiles[0].letter
+  await dragTile(page, rackTile(page, letter), square(page, a))
+  await expect(square(page, a)).toHaveAccessibleName(placedLabel(letter))
+
+  await holdOver(page, square(page, a), square(page, b))
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  await expect(square(page, a)).toHaveAccessibleName(emptyLabel)
+  await expect(square(page, b)).toHaveAccessibleName(emptyLabel)
+  await expect(rack(page).getByRole('button', { name: /on the grid/ })).toHaveCount(0)
+})
+
+test('a drag under way is dropped when Enter submits the Play and the Rack refills', async ({ page }) => {
+  const [free] = freeSquares()
+  const play = firstPlay()
+  for (const t of play.tiles) {
+    await rackTile(page, t.letter).click()
+    await square(page, t.row * GRID_SIZE + t.col).click()
+  }
+  const t = play.tiles[0]
+  // Holding a placed tile focuses its square, so Enter submits the Play mid-drag.
+  await holdOver(page, square(page, t.row * GRID_SIZE + t.col), square(page, free))
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(`Play scored ${play.score}.`)).toBeVisible()
+  await page.mouse.up()
+  await expect(square(page, free)).toHaveAccessibleName(emptyLabel)
+  await expect(rack(page).getByRole('button', { name: /on the grid/ })).toHaveCount(0)
+})
+
+test('a press cancelled by the keyboard before it moves is not a tap when let go', async ({ page }) => {
+  const [a] = freeSquares()
+  const letter = firstPlay().tiles[0].letter
+  await dragTile(page, rackTile(page, letter), square(page, a))
+  const other = rack(page).getByRole('button', { name: /^Rack tile [A-Z], \d+ points?$/ }).first()
+  const box = (await other.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.keyboard.press('Escape') // recalls every placed tile, which cancels the press
+  await page.mouse.up()
+  await expect(rack(page).getByRole('button', { pressed: true })).toHaveCount(0)
+  await expect(rack(page).getByRole('button', { name: /on the grid/ })).toHaveCount(0)
+})
+
 test.describe('on a touch screen', () => {
   test.use({ hasTouch: true })
 

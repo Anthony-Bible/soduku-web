@@ -167,7 +167,10 @@ function Game({ session }: { session: LettergridSession }) {
   const [drag, setDrag] = useState<Drag | null>(null)
   /** Set for the click that follows a drop, so a drag never also counts as a tap. */
   const suppressClick = useRef(false)
-  const endDragRef = useRef<(() => void) | null>(null)
+  /** Cancels the press or drag under way: nothing is dropped, though its release still isn't a tap. */
+  const cancelDragRef = useRef<(() => void) | null>(null)
+  /** Forgets the press or drag under way entirely (the game is going away). */
+  const stopDragRef = useRef<(() => void) | null>(null)
 
   const result = session.result
   const finished = result !== null
@@ -290,13 +293,14 @@ function Game({ session }: { session: LettergridSession }) {
 
   const startDrag = (e: ReactPointerEvent, source: DragSource) => {
     if (blocked || !e.isPrimary || e.button !== 0) return
-    endDragRef.current?.()
+    stopDragRef.current?.()
     const letter = state.rack[source.rack]
     const size = boardRef.current?.querySelector('[data-p]')?.getBoundingClientRect().width ?? 40
     const { clientX: sx, clientY: sy, pointerId: id } = e
     let active = false
+    let cancelled = false
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== id) return
+      if (ev.pointerId !== id || cancelled) return
       if (!active && Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_THRESHOLD) return
       active = true
       ev.preventDefault()
@@ -305,25 +309,27 @@ function Game({ session }: { session: LettergridSession }) {
     const end = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       stop()
-      if (!active) return
+      if (!active && !cancelled) return
       setDrag(null)
       suppressClick.current = true
       setTimeout(() => { suppressClick.current = false }, 0)
-      if (ev.type === 'pointerup') dropRef.current(source, cellUnder(ev.clientX, ev.clientY))
+      if (ev.type === 'pointerup' && !cancelled) dropRef.current(source, cellUnder(ev.clientX, ev.clientY))
     }
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
-      endDragRef.current = null
+      cancelDragRef.current = null
+      stopDragRef.current = null
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', end)
-    endDragRef.current = () => {
-      stop()
+    cancelDragRef.current = () => {
+      cancelled = true
       setDrag(null)
     }
+    stopDragRef.current = stop
   }
   const startCellDrag = (e: ReactPointerEvent, cell: number) => {
     const rack = stagedAt.get(cell)
@@ -338,11 +344,14 @@ function Game({ session }: { session: LettergridSession }) {
     typeRef.current = typeLetter
     dropRef.current = drop
   })
-  // A drag in progress is dropped if the game goes away or is blocked (a sheet, a dialog, the finish).
-  useEffect(() => () => endDragRef.current?.(), [])
+  // A drag in progress is forgotten if the game goes away, and cancelled if the game is blocked (a sheet, a
+  // dialog, the finish) or anything else changes the Rack or the placed tiles under it (a Play submitted
+  // with Enter, a recall from the keyboard): its source would no longer be the tile being dragged.
+  useEffect(() => () => stopDragRef.current?.(), [])
   useEffect(() => {
-    if (blocked) endDragRef.current?.()
+    if (blocked) cancelDragRef.current?.()
   }, [blocked])
+  useEffect(() => () => cancelDragRef.current?.(), [state.rack, staged])
   const moveCursor = useCallback((d: Direction, delta: number) => {
     setCursor((cur) => {
       const from = cur ?? cellIndex(CENTRE, CENTRE)
