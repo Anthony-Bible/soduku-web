@@ -29,6 +29,8 @@ import {
   deriveDailyLog,
   deriveStatistics,
   emptySyncDoc,
+  finishFeatureIntro,
+  isFeatureIntroFinished,
   GAME_SLOT_KEY,
   liveGameSlot,
   liveSlot,
@@ -42,6 +44,7 @@ import {
   unlockAchievements,
   winGame,
   wonGameCount,
+  type FeatureIntroId,
   type SyncDoc,
 } from './syncDoc'
 
@@ -135,6 +138,17 @@ export class PlayerProfile {
   /** Merges a document from the server into this device's. Never loses a local change. */
   mergeRemote(remote: SyncDoc): void {
     this.update((doc) => catchUpAchievements(mergeDocs(doc, clampDoc(remote, this.clockLimit())), this.now()))
+  }
+
+  /** Whether a Feature Intro has been finished on this device or any device of the Account. */
+  featureIntroFinished(id: FeatureIntroId): boolean {
+    return isFeatureIntroFinished(this.doc, id)
+  }
+
+  /** Marks a Feature Intro finished, for good. */
+  finishFeatureIntro(id: FeatureIntroId): void {
+    if (this.featureIntroFinished(id)) return
+    this.update((doc) => finishFeatureIntro(doc, id, this.now()))
   }
 
   /** Replaces everything with an empty, Signed Out state. */

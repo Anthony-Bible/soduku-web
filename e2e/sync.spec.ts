@@ -56,3 +56,36 @@ test('an address not on the Invite List gets the same reply and cannot sign in',
   await page.keyboard.type('123456')
   await expect(page.getByText("That code didn't work.", { exact: false })).toBeVisible()
 })
+
+test('a Feature Intro finished on one device stays finished on another device of the same Account', async ({ browser }) => {
+  const email = invitedEmail('intro')
+  const phone = await (await browser.newContext()).newPage()
+  const laptop = await (await browser.newContext()).newPage()
+  const openLettergrid = async (page: typeof phone) => {
+    await page.getByRole('tab', { name: /^Lettergrid/ }).click()
+    await page.getByRole('region', { name: 'Lettergrid Daily Puzzle' }).getByRole('button', { name: /Play|Continue/ }).click()
+    await expect(page.getByRole('group', { name: 'Lettergrid board' })).toBeVisible()
+  }
+  const intro = (page: typeof phone) => page.getByRole('note').filter({ hasText: 'Drag tiles onto the board' })
+  const syncNow = async (page: typeof phone) => {
+    await page.getByRole('button', { name: /^Account/ }).click()
+    await page.getByRole('button', { name: 'Sync now' }).click()
+    await expect(page.getByText(/Last synced/)).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  for (const page of [phone, laptop]) {
+    await page.goto('/')
+    await signIn(page, email)
+    await page.keyboard.press('Escape')
+  }
+
+  await openLettergrid(phone)
+  await intro(phone).getByRole('button', { name: 'Dismiss tip' }).click()
+  await expect(intro(phone)).toHaveCount(0)
+  await phone.getByRole('button', { name: 'Home' }).click()
+  await syncNow(phone)
+
+  await syncNow(laptop)
+  await openLettergrid(laptop)
+  await expect(intro(laptop)).toHaveCount(0)
+})

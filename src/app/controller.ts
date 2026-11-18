@@ -6,6 +6,7 @@ import {
   SaveStore,
   type CalendarDay,
   type Difficulty,
+  type FeatureIntroId,
   type GameSession,
   type KeyValueStore,
   type LettergridSaved,
@@ -109,6 +110,13 @@ export class AppController {
     this.version++
     this.snapshot = this.makeSnapshot()
     this.listeners.forEach((fn) => fn())
+  }
+
+  /** Marks a Feature Intro finished on this device; the next sync carries it to the Account. */
+  finishFeatureIntro(id: FeatureIntroId): void {
+    if (this.profile.featureIntroFinished(id)) return
+    this.profile.finishFeatureIntro(id)
+    this.changed()
   }
 
   /** Re-reads the local date, e.g. when the page becomes visible after midnight. */
