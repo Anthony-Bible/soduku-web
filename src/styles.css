@@ -338,6 +338,22 @@ small { display: block; color: var(--muted); font-size: 0.8125rem; }
   border-radius: 6px; background: var(--tile); color: var(--tile-text);
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.3), inset 0 0 0 1px var(--tile-edge);
 }
+.lg-intro {
+  display: flex; align-items: center; justify-content: center; gap: 8px; align-self: center;
+  padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--accent); color: var(--accent-text);
+  font-size: 0.9375rem; font-weight: 600;
+}
+.lg-intro-close {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: inherit; font-size: 1.25rem; line-height: 1;
+}
+.lg-intro-close:hover { background: rgb(255 255 255 / 0.2); }
+.lg-intro-ghost {
+  position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; display: grid; place-items: center;
+  width: calc(var(--size, 360px) / 9); height: calc(var(--size, 360px) / 9);
+  border-radius: 6px; background: var(--tile); color: var(--tile-text);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.3), inset 0 0 0 1px var(--tile-edge);
+}
 .lg-actions .btn { padding: 0 16px; }
 .lg-loading { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; }
 .lg-stars { font-size: 2rem; letter-spacing: 4px; }

@@ -119,6 +119,12 @@ _Avoid_: Guest, anonymous, offline mode
 The app added to a device's home screen or dock and opened on its own rather than in a browser tab. On iPhone and iPad it keeps its progress apart from the browser's, so it starts **Signed Out** until the player signs in there.
 _Avoid_: PWA, home-screen app, standalone
 
+### Help
+
+**Feature Intro**:
+A short in-game demonstration of a way to play, shown the first time a player reaches it until they place a tile or dismiss it, and never again on that Account (or that device, when Signed Out). The first one shows that Lettergrid tiles can be dragged onto the grid.
+_Avoid_: Tip, tutorial, onboarding, coach mark
+
 ### Rewards
 
 **Achievement**:
@@ -138,6 +144,7 @@ A calendar month in which every day's Daily Puzzle is solved, by On-Day or Catch
 - **Achievements**, including **Perfect Week** and **Full Month**, count only **Sudoku**; **Lettergrid** has none
 - A **Streak** counts only **On-Day Solves**; a **Catch-Up Solve** never extends or repairs one
 - Ordinary **Games** never affect the **Streak** or the **Calendar**
+- A **Feature Intro** once finished stays finished on every device of the Account, like an **Achievement** stays unlocked
 - A Sudoku **Daily Puzzle** solve is also a **Game** of its weekday's difficulty in the statistics
 - A **Lettergrid** **Daily Puzzle** can be solved many times, by **Replays** or on two devices before they sync; its best-scoring solve counts for its score, **Par** and **Statistics**, and the earliest finished wins a tie
 - A **Replay** never changes the **Calendar** or the **Streak**: the day is already solved, and whether that is an **On-Day Solve** or a **Catch-Up Solve** depends only on when the day was first opened

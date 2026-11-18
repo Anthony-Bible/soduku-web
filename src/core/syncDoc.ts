@@ -32,6 +32,13 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export const MAX_GAMES = 50_000
 export const MAX_DAYS = 20_000
 export const MAX_SLOTS = 5_000
+/** More Feature Intro entries than this mark a document as hostile or corrupt. */
+export const MAX_FEATURE_INTROS = 200
+
+/** Every Feature Intro this version of the app knows. Ids are permanent: renaming one shows it again. */
+export const FEATURE_INTROS = ['lettergrid.drag'] as const
+export type FeatureIntroId = (typeof FEATURE_INTROS)[number]
+export const isFeatureIntroId = (v: unknown): v is FeatureIntroId => (FEATURE_INTROS as readonly unknown[]).includes(v)
 
 /** One Game, from start to win or abandonment. `wonSeconds` is null until it is won. */
 export interface GameRecord {
@@ -78,9 +85,11 @@ export interface SyncDoc {
   readonly legacySolves: Readonly<Record<string, number>>
   /** Lettergrid's own Daily log, Game-in-progress slots and solves (ADR 0004). Sudoku data never reads it. */
   readonly lettergrid: LettergridProgress
+  /** Feature Intro id -> epoch ms it was first finished (earliest wins). A finished Intro never shows again. */
+  readonly featureIntros: Readonly<Partial<Record<FeatureIntroId, number>>>
 }
 
-export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, lettergrid: emptyLettergridProgress(), clock: 0 })
+export const emptySyncDoc = (): SyncDoc => ({ v: SYNC_DOC_VERSION, games: {}, firstOpened: {}, solved: {}, unlockedAt: {}, slots: {}, legacySolves: {}, lettergrid: emptyLettergridProgress(), featureIntros: {}, clock: 0 })
 
 // MARK: Deterministic ordering
 
@@ -176,6 +185,7 @@ export function mergeDocs(a: SyncDoc, b: SyncDoc): SyncDoc {
     slots: unionMap(a.slots, b.slots, mergeSlots),
     legacySolves: unionMap(a.legacySolves, b.legacySolves, (x, y) => Math.max(x, y)),
     lettergrid: mergeLettergridProgress(a.lettergrid, b.lettergrid),
+    featureIntros: unionMap(a.featureIntros as Record<string, number>, b.featureIntros as Record<string, number>, minNumber) as SyncDoc['featureIntros'],
     // Taken from the inputs (not the merged result, where an earlier start may have replaced a later one).
     clock: Math.max(a.clock, b.clock, contentClock(a), contentClock(b)),
   })
@@ -244,6 +254,15 @@ export function unlockAchievements(doc: SyncDoc, ids: readonly AchievementId[], 
   for (const id of ids) unlockedAt[id] = Math.min(unlockedAt[id] ?? at, at)
   return { ...doc, unlockedAt }
 }
+
+/** Records a Feature Intro as finished. The earliest finish is kept, and it never becomes unfinished. */
+export function finishFeatureIntro(doc: SyncDoc, id: FeatureIntroId, at: number): SyncDoc {
+  const was = doc.featureIntros[id]
+  if (was !== undefined && was <= at) return doc
+  return { ...doc, featureIntros: { ...doc.featureIntros, [id]: at } }
+}
+
+export const isFeatureIntroFinished = (doc: SyncDoc, id: FeatureIntroId): boolean => doc.featureIntros[id] !== undefined
 
 /** Writes a slot from this device, unless the slot already holds something newer. `null` leaves a cleared marker. */
 export function setSlot(doc: SyncDoc, key: string, game: GameState | null, updatedAt: number): SyncDoc {
@@ -337,9 +356,18 @@ export function parseSyncDoc(raw: unknown): SyncDoc | null {
   // Documents from before Lettergrid have no such field; they load as having no Lettergrid progress.
   const lettergrid = raw.lettergrid === undefined ? emptyLettergridProgress() : parseLettergridProgress(raw.lettergrid)
   if (!lettergrid) return null
+  // Documents from before Feature Intros have none finished. An id this version doesn't know (from a newer
+  // app) is dropped rather than rejected, so an older app keeps syncing; the server's merge keeps it.
+  const introsRaw = raw.featureIntros === undefined ? {} : raw.featureIntros
+  if (!isObj(introsRaw) || Object.keys(introsRaw).length > MAX_FEATURE_INTROS) return null
+  const outIntros: Partial<Record<FeatureIntroId, number>> = {}
+  for (const [k, t] of Object.entries(introsRaw)) {
+    if (typeof t !== 'number' || !Number.isFinite(t)) return null
+    if (isFeatureIntroId(k)) outIntros[k] = t
+  }
   const clockRaw = raw.clock === undefined ? 0 : raw.clock
   if (typeof clockRaw !== 'number' || !Number.isFinite(clockRaw) || clockRaw < 0) return null
-  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, lettergrid, clock: clockRaw }
+  return { v: SYNC_DOC_VERSION, games: outGames, firstOpened: outOpened, solved: outSolved, unlockedAt: outUnlocked, slots: outSlots, legacySolves: outLegacy, lettergrid, featureIntros: outIntros, clock: clockRaw }
 }
 
 // MARK: Results

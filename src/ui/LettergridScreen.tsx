@@ -20,6 +20,7 @@ import {
 import { playHaptics } from '../platform/haptics'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Icon } from './Icon'
+import { LettergridDragIntro } from './LettergridDragIntro'
 import { LettergridFinish } from './LettergridFinish'
 import { BONUS_TEXT, starsText, starsWords } from './format'
 
@@ -164,6 +165,7 @@ function Game({ session }: { session: LettergridSession }) {
   /** The finish overlay can be put away to look at the final board. */
   const [showResult, setShowResult] = useState(true)
   const boardRef = useRef<HTMLDivElement>(null)
+  const rackRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   /** Set for the click that follows a drop, so a drag never also counts as a tap. */
   const suppressClick = useRef(false)
@@ -399,6 +401,19 @@ function Game({ session }: { session: LettergridSession }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [blocked, cursor, moveCursor])
 
+  // The drag Feature Intro shows until the player places a tile (any way) or closes it, on any device.
+  const showIntro = !finished && !controller.profile.featureIntroFinished('lettergrid.drag')
+  const finishIntro = useCallback(() => controller.finishFeatureIntro('lettergrid.drag'), [controller])
+  useEffect(() => {
+    if (showIntro && staged.length > 0) finishIntro()
+  }, [showIntro, staged.length, finishIntro])
+  const introRack = state.rack.findIndex((_, i) => !stagedRack.has(i))
+  const introCell = useMemo(() => {
+    for (const c of state.seedCells)
+      for (const n of [c - GRID_SIZE, c + GRID_SIZE]) if (n >= 0 && n < GRID_SIZE * GRID_SIZE && state.grid[n] === null) return n
+    return state.grid.findIndex((l) => l === null)
+  }, [state.seedCells, state.grid])
+
   const score = session.score
   const stars = starsFor(score, state.par)
   const tabbable = cursor ?? cellIndex(CENTRE, CENTRE)
@@ -450,9 +465,21 @@ function Game({ session }: { session: LettergridSession }) {
           })}
         </div>
       </div>
+      {showIntro && !blocked && introRack >= 0 && introCell >= 0 && (
+        <LettergridDragIntro
+          boardRef={boardRef}
+          rackRef={rackRef}
+          rackIndex={introRack}
+          letter={state.rack[introRack]}
+          value={values[state.rack[introRack]] ?? 0}
+          toCell={introCell}
+          glide={drag === null}
+          onClose={finishIntro}
+        />
+      )}
       <p className="lg-message" role="status">{message && !message.bad ? message.text : ''}</p>
       <p className="lg-message form-error" role="alert">{message?.bad ? message.text : ''}</p>
-      <div className="rack" role="group" aria-label="Rack">
+      <div className="rack" role="group" aria-label="Rack" ref={rackRef}>
         {state.rack.map((letter, i) => {
           const used = stagedRack.has(i)
           return (

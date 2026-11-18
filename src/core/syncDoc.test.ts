@@ -14,6 +14,9 @@ import {
   dailySlotKey,
   docsEqual,
   emptySyncDoc,
+  finishFeatureIntro,
+  isFeatureIntroFinished,
+  FEATURE_INTROS,
   mergeDocs,
   normalizeDoc,
   parseSyncDoc,
@@ -77,8 +80,9 @@ const arbDoc: fc.Arbitrary<SyncDoc> = fc
     unlocks: subset(UNLOCKS, () => fc.integer({ min: 0, max: 9 })),
     slots: subset(SLOT_KEYS, () => arbSlot),
     legacy: subset(['m1', 'm2'], () => fc.integer({ min: 0, max: 40 })),
+    intros: subset(FEATURE_INTROS, () => arbTime),
   })
-  .map(({ games, opened, solved, unlocks, slots, legacy }) => {
+  .map(({ games, opened, solved, unlocks, slots, legacy, intros }) => {
     const pick = <T,>(keys: readonly (string | number)[], vals: readonly (T | undefined)[]) =>
       Object.fromEntries(keys.flatMap((k, i) => (vals[i] === undefined ? [] : [[String(k), vals[i]]])))
     return normalizeDoc({
@@ -90,6 +94,7 @@ const arbDoc: fc.Arbitrary<SyncDoc> = fc
       slots: pick(SLOT_KEYS, slots as (Slot | undefined)[]),
       legacySolves: pick(['m1', 'm2'], legacy as (number | undefined)[]),
       lettergrid: emptyLettergridProgress(),
+      featureIntros: pick(FEATURE_INTROS, intros as (number | undefined)[]),
       clock: 0,
     } as SyncDoc)
   })
@@ -127,6 +132,7 @@ describe('merge never loses progress', () => {
           for (const d of Object.keys(src.solved)) expect(m.solved[d]).toBe(true)
           for (const [d, o] of Object.entries(src.firstOpened)) expect(m.firstOpened[d]).toBeLessThanOrEqual(o)
           for (const [id, t] of Object.entries(src.unlockedAt)) expect(m.unlockedAt[id as keyof typeof m.unlockedAt]).toBeLessThanOrEqual(t)
+          for (const [id, t] of Object.entries(src.featureIntros)) expect(m.featureIntros[id as keyof typeof m.featureIntros]).toBeLessThanOrEqual(t)
         }
       }),
     ))
@@ -286,6 +292,41 @@ describe('Achievements from merged history', () => {
   })
 })
 
+describe('Feature Intros', () => {
+  const ID = FEATURE_INTROS[0]
+
+  test('once finished on any device, an Intro is finished after every merge, at the earliest time', () =>
+    fc.assert(
+      fc.property(arbDoc, arbDoc, arbTime, (a, b, at) => {
+        const done = finishFeatureIntro(a, ID, at)
+        expect(isFeatureIntroFinished(done, ID)).toBe(true)
+        for (const m of [mergeDocs(done, b), mergeDocs(b, done)]) {
+          expect(isFeatureIntroFinished(m, ID)).toBe(true)
+          expect(m.featureIntros[ID]).toBe(Math.min(at, a.featureIntros[ID] ?? at, b.featureIntros[ID] ?? at))
+        }
+      }),
+    ))
+
+  test('finishing again never moves the time later', () =>
+    fc.assert(
+      fc.property(arbDoc, arbTime, arbTime, (a, t1, t2) => {
+        const twice = finishFeatureIntro(finishFeatureIntro(a, ID, t1), ID, t2)
+        expect(twice.featureIntros[ID]).toBe(Math.min(t1, t2, a.featureIntros[ID] ?? t1))
+      }),
+    ))
+
+  test('a document from before Feature Intros loads with none finished', () => {
+    const old: Record<string, unknown> = { ...emptySyncDoc() }
+    delete old.featureIntros
+    expect(parseSyncDoc(old)?.featureIntros).toEqual({})
+  })
+
+  test('an Intro this app does not know (from a newer app) is dropped, not rejected', () => {
+    const doc = parseSyncDoc({ ...emptySyncDoc(), featureIntros: { 'future.thing': 5, [ID]: 7 } })
+    expect(doc?.featureIntros).toEqual({ [ID]: 7 })
+  })
+})
+
 describe('parseSyncDoc', () => {
   test('merges ids that are also names on Object.prototype like any other id', () => {
     const record = { id: 'toString', difficulty: 'easy', startedAt: 5, dailyDay: null, wonSeconds: 60, mistakes: 0, hintsUsed: 0 }
@@ -309,6 +350,8 @@ describe('parseSyncDoc', () => {
     ['bad slot key', { ...emptySyncDoc(), slots: { weird: { updatedAt: 1, game: null } } }],
     ['bad slot game', { ...emptySyncDoc(), slots: { 'game.x': { updatedAt: 1, game: { id: 'x' } } } }],
     ['non-finite time', { ...emptySyncDoc(), slots: { 'game.x': { updatedAt: 'now', game: null } } }],
+    ['Feature Intros not an object', { ...emptySyncDoc(), featureIntros: [] }],
+    ['a Feature Intro time that is not a number', { ...emptySyncDoc(), featureIntros: { 'lettergrid.drag': 'yes' } }],
   ])('rejects %s', (_name, doc) => {
     expect(parseSyncDoc(doc)).toBeNull()
   })
