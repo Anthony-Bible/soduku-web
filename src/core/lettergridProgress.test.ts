@@ -476,6 +476,41 @@ describe('PlayerProfile Lettergrid Dailies', () => {
       expect(profile.lettergridStatistics.dailiesPlayed).toBe(1)
     })
 
+    test('a stale tab cannot bring back a Replay that already finished', () => {
+      const clock = { t: 1_000 }
+      const kv = new MemoryStore()
+      const a = make(clock, kv)
+      const b = make(clock, kv)
+      solveDay100(a, clock, 0)
+      clock.t = 2_000
+      const replay = a.startLettergridDaily(baseState(), 100)
+      expect(b.openLettergridDaily(100, 100)).toMatchObject({ id: replay.id })
+      clock.t = 3_000
+      a.saveLettergrid(100, finishWith(replay, 0)) // not better: dropped, slot cleared
+      expect(a.hasLettergridInProgress(100)).toBe(false)
+      clock.t = 4_000
+      b.saveLettergrid(100, replay) // B's stale view of the same, unfinished game
+      expect(b.hasLettergridInProgress(100)).toBe(false)
+      expect(make(clock, kv).openLettergridDaily(100, 100)).toBe('needsGame')
+    })
+
+    test('a Replay started after the clear still saves normally', () => {
+      const clock = { t: 1_000 }
+      const kv = new MemoryStore()
+      const profile = make(clock, kv)
+      solveDay100(profile, clock, 0)
+      clock.t = 2_000
+      const first = profile.startLettergridDaily(baseState(), 100)
+      clock.t = 3_000
+      profile.saveLettergrid(100, finishWith(first, 0))
+      clock.t = 4_000
+      const next = profile.startLettergridDaily(baseState(), 100)
+      expect(next.id).not.toBe(first.id)
+      clock.t = 5_000
+      profile.saveLettergrid(100, next)
+      expect(make(clock, kv).openLettergridDaily(100, 100)).toMatchObject({ id: next.id })
+    })
+
     test('a Replay in progress survives normalizing, and a finished one is cleared', () => {
       const clock = { t: 1_000 }
       const kv = new MemoryStore()
@@ -537,7 +572,7 @@ describe('finished boards', () => {
     expect(parsed!.lettergrid.solves.old.board).toBeUndefined()
   })
 
-  test('a malformed board is rejected', () => {
+  test('a malformed board is dropped, keeping the solve and the rest of the document', () => {
     const state = finished()
     const board = boardOf(state)
     const solve = { gameId: 'b', day: 100, finishedAt: 5, score: 0, stars: 0, plays: [null, null, null, null, null, null] }
@@ -547,6 +582,30 @@ describe('finished boards', () => {
       { ...board, plays: board.plays.slice(1) },
       { ...board, plays: [[board.grid.indexOf('.')], [], [], [], [], []] },
       { ...board, plays: [[CELL_COUNT], [], [], [], [], []] },
-    ]) expect(parseLettergridProgress({ firstOpened: {}, slots: {}, clock: 0, solves: { b: { ...solve, board: bad } } })).toBeNull()
+      'nonsense',
+    ]) {
+      const parsed = parseLettergridProgress({ firstOpened: { 100: 7 }, slots: {}, clock: 3, solves: { b: { ...solve, board: bad } } })
+      expect(parsed).not.toBeNull()
+      expect(parsed!.solves.b).toEqual(solve)
+      expect(parsed!.solves.b.board).toBeUndefined()
+      expect(parsed!.firstOpened).toEqual({ 100: 7 })
+      expect(parsed!.clock).toBe(3)
+    }
+  })
+
+  test('finishing a state whose Play tile sits on an empty cell records the solve without a board', () => {
+    const state = finished()
+    const empty = state.grid.findIndex((c) => c === null)
+    const bad: LettergridState = {
+      ...state,
+      plays: state.plays.map((p, i) => (i === 0 ? { ...p, tiles: [...p.tiles, { row: Math.floor(empty / 9), col: empty % 9, letter: 'a' }] } : p)),
+    }
+    const profile = new PlayerProfile(new SaveStore(new MemoryStore()), () => 1_000, () => 'id1')
+    const saved = profile.startLettergridDaily(newGame(lettergridDaily(dayFromYMD(2026, 11, 5), words())), 100)
+    profile.saveLettergrid(100, { ...saved, state: bad })
+    const solve = profile.lettergridSolve(100)
+    expect(solve).not.toBeNull()
+    expect(solve!.board).toBeUndefined()
+    expect(parseSyncDoc(JSON.parse(JSON.stringify(profile.syncDoc())))).not.toBeNull()
   })
 })

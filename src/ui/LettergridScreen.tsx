@@ -20,14 +20,7 @@ import { playHaptics } from '../platform/haptics'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Icon } from './Icon'
 import { LettergridFinish } from './LettergridFinish'
-import { starsText, starsWords } from './format'
-
-const BONUS_TEXT: Record<Exclude<Bonus, null>, { short: string; words: string }> = {
-  L2: { short: 'L×2', words: 'double letter' },
-  L3: { short: 'L×3', words: 'triple letter' },
-  W2: { short: 'W×2', words: 'double word' },
-  W3: { short: 'W×3', words: 'triple word' },
-}
+import { BONUS_TEXT, starsText, starsWords } from './format'
 
 /** Why a Play was refused, in the player's words. Nothing was placed. */
 function rejectionText(r: Extract<ActionResult, { ok: false }>): string {

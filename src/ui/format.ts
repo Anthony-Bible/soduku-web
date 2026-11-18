@@ -1,3 +1,5 @@
+import type { Bonus } from '../core/lettergrid'
+
 /** "m:ss" or "h:mm:ss". */
 export function formatElapsed(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -38,3 +40,11 @@ export const starsText = (stars: number): string => '★'.repeat(Math.max(0, Mat
 /** Each Play's score in order, with a loop arrow for a Swap. */
 export const playsText = (plays: readonly (number | null)[]): string => plays.map((p) => (p === null ? '↺' : String(p))).join(' · ')
 export const starsWords = (stars: number): string => (stars === 0 ? 'no stars' : `${stars} ${stars === 1 ? 'star' : 'stars'}`)
+
+/** How a Lettergrid bonus square reads on screen and aloud. */
+export const BONUS_TEXT: Record<Exclude<Bonus, null>, { short: string; words: string }> = {
+  L2: { short: 'L×2', words: 'double letter' },
+  L3: { short: 'L×3', words: 'triple letter' },
+  W2: { short: 'W×2', words: 'double word' },
+  W3: { short: 'W×3', words: 'triple word' },
+}

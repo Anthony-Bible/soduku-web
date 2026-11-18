@@ -176,7 +176,7 @@ test('the Final Board shown is the best solve\'s, and a Replay after viewing a b
   await daily.getByRole('button', { name: 'View board' }).click()
   const sheet = page.getByRole('dialog', { name: 'Lettergrid Board' })
   await expect(sheet.getByText(new RegExp(`^Score ${best.score}`))).toBeVisible()
-  const board = sheet.getByRole('img', { name: `Lettergrid board after 6 of 6 Plays` })
+  const board = sheet.getByRole('group', { name: `Lettergrid board after 6 of 6 Plays` })
   const finalTiles = await board.locator('.lg-cell.tile').count()
   await sheet.getByRole('button', { name: 'First: the opening grid' }).click()
   await expect(sheet.getByRole('status')).toContainText('Start: the Seed Word')
